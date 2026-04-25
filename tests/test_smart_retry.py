@@ -212,18 +212,20 @@ class TestRetryManager(unittest.TestCase):
         ))
         
         delays = []
+        call_count = [0]
+        last_call = [None]
         
         def flaky_func():
-            if len(delays) > 0:
-                delays.append(time.time() - last_call[0])
-            last_call[0] = time.time()
-            
-            if len(delays) < 3:
+            now = time.time()
+            if last_call[0] is not None:
+                delays.append(now - last_call[0])
+            last_call[0] = now
+            call_count[0] += 1
+
+            if call_count[0] < 4:
                 raise Exception("Temporary error")
             return "success"
-        
-        last_call = [time.time()]
-        
+
         manager.execute_with_retry(flaky_func)
         
         # 验证每次延迟都不同（有抖动）

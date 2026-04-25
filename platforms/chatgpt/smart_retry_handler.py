@@ -56,6 +56,7 @@ class RetryConfig:
         ErrorCategory.TIMEOUT,
         ErrorCategory.RATE_LIMIT,
         ErrorCategory.SERVER_ERROR,
+        ErrorCategory.UNKNOWN,
     ])
     backoff_factor: float = 2.0
     jitter_range: Tuple[float, float] = (0.5, 1.5)
@@ -132,7 +133,7 @@ class ErrorClassifier:
         return ErrorInfo(
             category=ErrorCategory.UNKNOWN,
             message=str(error),
-            retryable=False,
+            retryable=True,
         )
     
     @staticmethod

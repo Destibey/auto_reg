@@ -1393,10 +1393,17 @@ class RefreshTokenRegistrationEngine:
     def _get_workspace_id(self) -> Optional[str]:
         """从 oai-client-auth-session cookie 中解析 workspace_id。"""
         try:
-            # 先列出所有可用的 cookies，帮助诊断
-            all_cookies = {name: value[:50] + "..." if len(value) > 50 else value 
-                          for name, value in self.session.cookies.get_dict().items()}
-            self._log(f"当前会话 cookies: {list(all_cookies.keys())}")
+            # 先列出所有可用的 cookies，帮助诊断；测试里的 mock cookies
+            # 可能没有可迭代的 get_dict()，这里做宽松兼容。
+            all_cookie_names: list[str] = []
+            cookies = getattr(self.session, "cookies", None)
+            get_dict = getattr(cookies, "get_dict", None)
+            if callable(get_dict):
+                raw_cookies = get_dict()
+                if isinstance(raw_cookies, dict):
+                    all_cookie_names = list(raw_cookies.keys())
+            if all_cookie_names:
+                self._log(f"当前会话 cookies: {all_cookie_names}")
             
             auth_cookie = self.session.cookies.get("oai-client-auth-session")
             if not auth_cookie:

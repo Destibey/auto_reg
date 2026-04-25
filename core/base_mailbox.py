@@ -2479,7 +2479,13 @@ class FreemailMailbox(BaseMailbox):
                     params=params,
                     timeout=10,
                 )
-                self._log(f"[Freemail] 响应状态: {r.status_code}, 响应前 200 字符: {r.text[:200]}")
+                response_text = getattr(r, "text", "")
+                if not isinstance(response_text, str):
+                    response_text = str(response_text)
+                self._log(
+                    f"[Freemail] 响应状态: {getattr(r, 'status_code', '?')}, "
+                    f"响应前 200 字符: {response_text[:200]}"
+                )
                 try:
                     emails = r.json()
                 except Exception as json_err:

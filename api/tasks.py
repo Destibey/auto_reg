@@ -4,6 +4,11 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 from typing import Optional
 from core.db import TaskLog, engine
+from core.task_runtime import (
+    RegisterTaskStore,
+    SkipCurrentAttemptRequested,
+    StopTaskRequested,
+)
 import time, json, asyncio, threading, logging
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -14,21 +19,20 @@ _tasks_lock = threading.Lock()
 
 MAX_FINISHED_TASKS = 200
 CLEANUP_THRESHOLD = 250
+_task_store = RegisterTaskStore(
+    max_finished_tasks=MAX_FINISHED_TASKS,
+    cleanup_threshold=CLEANUP_THRESHOLD,
+)
 
 
 def _cleanup_old_tasks():
-    """Remove oldest finished tasks when the dict grows too large."""
+    """Remove oldest finished tasks when the store grows too large."""
+    _task_store.cleanup()
+    live_task_ids = {snapshot["id"] for snapshot in _task_store.list_snapshots()}
     with _tasks_lock:
-        finished = [
-            (tid, t) for tid, t in _tasks.items()
-            if t.get("status") in ("done", "failed")
-        ]
-        if len(finished) <= MAX_FINISHED_TASKS:
-            return
-        finished.sort(key=lambda x: x[0])
-        to_remove = finished[: len(finished) - MAX_FINISHED_TASKS]
-        for tid, _ in to_remove:
-            del _tasks[tid]
+        for task_id in list(_tasks.keys()):
+            if task_id not in live_task_ids:
+                del _tasks[task_id]
 
 
 class RegisterTaskRequest(BaseModel):
@@ -54,13 +58,99 @@ class TaskLogBatchDeleteRequest(BaseModel):
     ids: list[int]
 
 
+def _sync_task_snapshot(task_id: str) -> dict | None:
+    if not _task_store.exists(task_id):
+        return None
+    snapshot = _task_store.snapshot(task_id)
+    with _tasks_lock:
+        _tasks[task_id] = snapshot
+    return snapshot
+
+
+def _get_task_snapshot(task_id: str) -> dict | None:
+    snapshot = _sync_task_snapshot(task_id)
+    if snapshot is not None:
+        return snapshot
+    with _tasks_lock:
+        return _tasks.get(task_id)
+
+
+def _list_task_snapshots() -> list[dict]:
+    snapshots = {snapshot["id"]: snapshot for snapshot in _task_store.list_snapshots()}
+    with _tasks_lock:
+        for task_id, task in _tasks.items():
+            snapshots.setdefault(task_id, task)
+    return list(snapshots.values())
+
+
+def _create_task_record(
+    task_id: str,
+    req: "RegisterTaskRequest",
+    source: str = "manual",
+    meta: dict | None = None,
+):
+    if not _task_store.exists(task_id):
+        _task_store.create(
+            task_id,
+            platform=req.platform,
+            total=req.count,
+            source=source,
+            meta=meta,
+        )
+    return _sync_task_snapshot(task_id)
+
+
+def has_active_register_task(
+    *,
+    platform: str | None = None,
+    source: str | None = None,
+) -> bool:
+    return _task_store.has_active(platform=platform, source=source)
+
+
+def _prepare_register_request(req: "RegisterTaskRequest") -> "RegisterTaskRequest":
+    mail_provider = req.extra.get("mail_provider")
+    if mail_provider != "luckmail":
+        return req
+
+    platform = req.platform
+    if platform in ("tavily", "openblocklabs"):
+        raise HTTPException(400, f"LuckMail 渠道暂时不支持 {platform} 项目注册")
+
+    mapping = {
+        "trae": "trae",
+        "cursor": "cursor",
+        "grok": "grok",
+        "kiro": "kiro",
+        "chatgpt": "openai",
+    }
+    req.extra["luckmail_project_code"] = mapping.get(platform, platform)
+    return req
+
+
+def enqueue_register_task(
+    req: "RegisterTaskRequest",
+    *,
+    source: str = "manual",
+    meta: dict | None = None,
+    background_tasks: BackgroundTasks | None = None,
+) -> str:
+    _prepare_register_request(req)
+    task_id = f"task_{int(time.time()*1000)}"
+    _create_task_record(task_id, req, source, meta)
+    if background_tasks is not None:
+        background_tasks.add_task(_run_register, task_id, req)
+    else:
+        threading.Thread(target=_run_register, args=(task_id, req), daemon=True).start()
+    return task_id
+
+
 def _log(task_id: str, msg: str):
     """向任务追加一条日志"""
     ts = time.strftime("%H:%M:%S")
     entry = f"[{ts}] {msg}"
-    with _tasks_lock:
-        if task_id in _tasks:
-            _tasks[task_id].setdefault("logs", []).append(entry)
+    _task_store.append_log(task_id, entry)
+    _sync_task_snapshot(task_id)
     print(entry)
 
 
@@ -99,12 +189,17 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
     from core.db import save_account
     from core.base_mailbox import create_mailbox
 
-    with _tasks_lock:
-        _tasks[task_id]["status"] = "running"
+    if not _task_store.exists(task_id):
+        _create_task_record(task_id, req, "manual", None)
+    _task_store.mark_running(task_id)
+    _sync_task_snapshot(task_id)
     success = 0
+    skipped = 0
+    stopped = False
     errors = []
     start_gate_lock = threading.Lock()
     next_start_time = time.time()
+    task_control = _task_store.control_for(task_id)
 
     try:
         PlatformCls = get(req.platform)
@@ -121,7 +216,11 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
 
         def _do_one(i: int):
             nonlocal next_start_time
+            _proxy = None
+            _mailbox = None
+            attempt_id = task_control.start_attempt()
             try:
+                task_control.checkpoint(attempt_id=attempt_id)
                 from core.proxy_pool import proxy_pool
 
                 _proxy = req.proxy
@@ -158,14 +257,21 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
                     extra=merged_extra,
                 )
                 _mailbox = _build_mailbox(_proxy)
+                _mailbox._task_control = task_control
+                _mailbox._task_attempt_token = attempt_id
                 _platform = PlatformCls(config=_config, mailbox=_mailbox)
                 _platform._log_fn = lambda msg: _log(task_id, msg)
+                if hasattr(_platform, "bind_task_control"):
+                    _platform.bind_task_control(task_control)
                 if getattr(_platform, "mailbox", None) is not None:
                     _platform.mailbox._log_fn = _platform._log_fn
-                with _tasks_lock:
-                    _tasks[task_id]["progress"] = f"{i+1}/{req.count}"
+                    _platform.mailbox._task_attempt_token = attempt_id
+                _task_store.set_progress(task_id, f"{i+1}/{req.count}")
+                _sync_task_snapshot(task_id)
                 _log(task_id, f"开始注册第 {i+1}/{req.count} 个账号")
-                if _proxy: _log(task_id, f"使用代理: {_proxy}")
+                if _proxy:
+                    _log(task_id, f"使用代理: {_proxy}")
+                task_control.checkpoint(attempt_id=attempt_id)
                 account = _platform.register(
                     email=req.email or None,
                     password=req.password,
@@ -194,14 +300,27 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
                 cashier_url = (account.extra or {}).get("cashier_url", "")
                 if cashier_url:
                     _log(task_id, f"  [升级链接] {cashier_url}")
-                    with _tasks_lock:
-                        _tasks[task_id].setdefault("cashier_urls", []).append(cashier_url)
-                return True
+                    _task_store.add_cashier_url(task_id, cashier_url)
+                    _sync_task_snapshot(task_id)
+                return {"outcome": "success"}
+            except SkipCurrentAttemptRequested as e:
+                _log(task_id, f"[SKIP] {e}")
+                return {"outcome": "skipped", "message": str(e)}
+            except StopTaskRequested as e:
+                _log(task_id, f"[STOP] {e}")
+                return {"outcome": "stopped", "message": str(e)}
             except Exception as e:
-                if _proxy: proxy_pool.report_fail(_proxy)
+                if _proxy:
+                    from core.proxy_pool import proxy_pool
+
+                    proxy_pool.report_fail(_proxy)
                 _log(task_id, f"[FAIL] 注册失败: {e}")
                 _save_task_log(req.platform, req.email or "", "failed", error=str(e))
-                return str(e)
+                return {"outcome": "failed", "message": str(e)}
+            finally:
+                if _mailbox is not None:
+                    _mailbox._task_attempt_token = None
+                task_control.finish_attempt(attempt_id)
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
         max_workers = min(req.concurrency, req.count, 5)
@@ -214,22 +333,41 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
                     _log(task_id, f"[ERROR] 任务线程异常: {e}")
                     errors.append(str(e))
                     continue
-                if result is True:
+                outcome = result.get("outcome")
+                if outcome == "success":
                     success += 1
-                else:
-                    errors.append(result)
+                elif outcome == "skipped":
+                    skipped += 1
+                elif outcome == "stopped":
+                    stopped = True
+                elif outcome == "failed":
+                    errors.append(result.get("message", ""))
     except Exception as e:
         _log(task_id, f"致命错误: {e}")
-        with _tasks_lock:
-            _tasks[task_id]["status"] = "failed"
-            _tasks[task_id]["error"] = str(e)
+        _task_store.finish(
+            task_id,
+            status="failed",
+            success=success,
+            skipped=skipped,
+            errors=errors,
+            error=str(e),
+        )
+        _sync_task_snapshot(task_id)
         return
 
-    with _tasks_lock:
-        _tasks[task_id]["status"] = "done"
-        _tasks[task_id]["success"] = success
-        _tasks[task_id]["errors"] = errors
-    _log(task_id, f"完成: 成功 {success} 个, 失败 {len(errors)} 个")
+    final_status = "stopped" if stopped or task_control.is_stop_requested() else "done"
+    _task_store.finish(
+        task_id,
+        status=final_status,
+        success=success,
+        skipped=skipped,
+        errors=errors,
+    )
+    _sync_task_snapshot(task_id)
+    if final_status == "stopped":
+        _log(task_id, f"任务已停止: 成功 {success} 个, 跳过 {skipped} 个, 失败 {len(errors)} 个")
+    else:
+        _log(task_id, f"完成: 成功 {success} 个, 跳过 {skipped} 个, 失败 {len(errors)} 个")
     _cleanup_old_tasks()
 
 
@@ -238,26 +376,12 @@ def create_register_task(
     req: RegisterTaskRequest,
     background_tasks: BackgroundTasks,
 ):
-    mail_provider = req.extra.get("mail_provider")
-    if mail_provider == "luckmail":
-        platform = req.platform
-        if platform in ("tavily", "openblocklabs"):
-            raise HTTPException(400, f"LuckMail 渠道暂时不支持 {platform} 项目注册")
-        
-        mapping = {
-            "trae": "trae",
-            "cursor": "cursor",
-            "grok": "grok",
-            "kiro": "kiro",
-            "chatgpt": "openai"
-        }
-        req.extra["luckmail_project_code"] = mapping.get(platform, platform)
-
-    task_id = f"task_{int(time.time()*1000)}"
-    with _tasks_lock:
-        _tasks[task_id] = {"id": task_id, "status": "pending",
-                           "progress": f"0/{req.count}", "logs": []}
-    background_tasks.add_task(_run_register, task_id, req)
+    task_id = enqueue_register_task(
+        req,
+        source="manual",
+        meta=None,
+        background_tasks=background_tasks,
+    )
     return {"task_id": task_id}
 
 

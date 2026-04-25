@@ -21,6 +21,7 @@ import Proxies from '@/pages/Proxies'
 import Settings from '@/pages/Settings'
 import TaskHistory from '@/pages/TaskHistory'
 import Contribution from '@/pages/Contribution'
+import Login from '@/pages/Login'
 import { darkTheme, lightTheme } from './theme'
 
 const { Sider, Content } = Layout
@@ -44,12 +45,17 @@ function AppContent() {
   }, [themeMode])
 
   useEffect(() => {
+    if (location.pathname === '/login') return
     fetch('/api/platforms')
       .then(r => r.json())
       .then(d => setPlatforms((d || [])
         .filter((p: any) => p.name !== 'tavily')
         .map((p: any) => ({ key: p.name, label: p.display_name }))))
-  }, [])
+  }, [location.pathname])
+
+  if (location.pathname === '/login') {
+    return <Login />
+  }
 
   const isLight = themeMode === 'light'
   const currentTheme = isLight ? lightTheme : darkTheme

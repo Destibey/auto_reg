@@ -49,6 +49,13 @@ class _FakeIMAP:
         return "BYE", [b"bye"]
 
 
+class _FakeIMAPWithSpecialUseList(_FakeIMAP):
+    list_entries = []
+
+    def list(self):
+        return "OK", list(self.list_entries)
+
+
 class GmailIMAPMailboxTests(unittest.TestCase):
     def setUp(self):
         _FakeIMAP.instances = []
@@ -102,10 +109,13 @@ class GmailIMAPMailboxTests(unittest.TestCase):
         ids = mailbox.get_current_ids(MailboxAccount(email="alias@example.com"))
 
         self.assertEqual(ids, {"INBOX:101"})
-        self.assertEqual(_FakeIMAP.instances[0].host, "imap.gmail.com")
-        self.assertEqual(_FakeIMAP.instances[0].port, 993)
-        self.assertEqual(_FakeIMAP.instances[0].login_args, ("owner@gmail.com", "app-pass"))
-        self.assertEqual(_FakeIMAP.instances[0].selected_mailbox, "INBOX")
+        selected_instances = [
+            instance for instance in _FakeIMAP.instances if instance.selected_mailbox
+        ]
+        self.assertEqual(selected_instances[0].host, "imap.gmail.com")
+        self.assertEqual(selected_instances[0].port, 993)
+        self.assertEqual(selected_instances[0].login_args, ("owner@gmail.com", "app-pass"))
+        self.assertEqual(selected_instances[0].selected_mailbox, "INBOX")
 
     @mock.patch("imaplib.IMAP4_SSL", _FakeIMAP)
     def test_wait_for_code_reads_new_message_addressed_to_generated_alias(self):
@@ -159,7 +169,7 @@ class GmailIMAPMailboxTests(unittest.TestCase):
 
         self.assertEqual(code, "246810")
         self.assertEqual(
-            [instance.selected_mailbox for instance in _FakeIMAP.instances],
+            [instance.selected_mailbox for instance in _FakeIMAP.instances if instance.selected_mailbox],
             ["INBOX", "Junk", "Trash", "[Gmail]/Spam"],
         )
 
@@ -191,8 +201,48 @@ class GmailIMAPMailboxTests(unittest.TestCase):
 
         self.assertEqual(code, "135790")
         self.assertEqual(
-            [instance.selected_mailbox for instance in _FakeIMAP.instances],
+            [instance.selected_mailbox for instance in _FakeIMAP.instances if instance.selected_mailbox],
             ["INBOX", "Junk", "Trash"],
+        )
+
+    @mock.patch("imaplib.IMAP4_SSL", _FakeIMAPWithSpecialUseList)
+    def test_wait_for_code_discovers_gmail_special_use_junk_and_trash_mailboxes(self):
+        _FakeIMAP.instances = []
+        _FakeIMAP.messages_by_mailbox = {
+            "INBOX": {},
+            "[Google Mail]/Bin": {
+                b"401": self._mail_bytes(
+                    to_addr="alias@example.com",
+                    body="OpenAI verification code: 975310",
+                )
+            },
+        }
+        _FakeIMAPWithSpecialUseList.list_entries = [
+            b'(\\HasNoChildren) "/" "INBOX"',
+            b'(\\HasNoChildren \\Trash) "/" "[Google Mail]/Bin"',
+        ]
+        mailbox = create_mailbox(
+            "gmail_imap",
+            extra={
+                "gmail_imap_email": "owner@gmail.com",
+                "gmail_imap_app_password": "app-pass",
+                "gmail_imap_target_email": "alias@example.com",
+            },
+        )
+
+        code = mailbox.wait_for_code(
+            MailboxAccount(email="alias@example.com"),
+            timeout=1,
+        )
+
+        self.assertEqual(code, "975310")
+        self.assertEqual(
+            [
+                instance.selected_mailbox
+                for instance in _FakeIMAP.instances
+                if instance.selected_mailbox
+            ],
+            ["INBOX", "[Google Mail]/Bin"],
         )
 
     @mock.patch("imaplib.IMAP4_SSL", _FakeIMAP)

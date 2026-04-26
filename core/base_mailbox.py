@@ -624,6 +624,7 @@ class GmailIMAPMailbox(BaseMailbox):
             self.port = 993
         self.mailbox = str(mailbox or "INBOX").strip() or "INBOX"
         self.mailboxes = self._resolve_mailboxes(self.mailbox)
+        self._discovered_mailboxes: list[str] | None = None
         self.target_email = self._normalize_email(target_email)
         self.target_domain = self._normalize_domain(target_domain)
 
@@ -674,17 +675,84 @@ class GmailIMAPMailbox(BaseMailbox):
             )
 
     def _connect(self, mailbox: str | None = None):
-        import imaplib
-
-        self._ensure_configured()
         selected_mailbox = str(mailbox or self.mailbox or "INBOX").strip() or "INBOX"
-        client = imaplib.IMAP4_SSL(self.host, self.port)
-        client.login(self.username, self.app_password)
+        client = self._open_client()
         status, data = client.select(selected_mailbox)
         if str(status).upper() != "OK":
             self._logout(client)
             raise RuntimeError(f"Gmail IMAP 无法打开邮箱目录: {selected_mailbox} ({data})")
         return client
+
+    def _open_client(self):
+        import imaplib
+
+        self._ensure_configured()
+        client = imaplib.IMAP4_SSL(self.host, self.port)
+        client.login(self.username, self.app_password)
+        return client
+
+    def _parse_list_mailbox_name(self, item: Any) -> str:
+        text = item.decode("utf-8", errors="ignore") if isinstance(item, bytes) else str(item or "")
+        matches = re.findall(r'"((?:[^"\\]|\\.)*)"', text)
+        if matches:
+            return matches[-1].replace(r"\"", '"').replace(r"\\", "\\").strip()
+        return text.rsplit(" ", 1)[-1].strip().strip('"')
+
+    def _discover_special_use_mailboxes(self) -> list[str]:
+        if self._discovered_mailboxes is not None:
+            return self._discovered_mailboxes
+        self._discovered_mailboxes = []
+        if self.host.lower() != "imap.gmail.com":
+            return self._discovered_mailboxes
+
+        client = None
+        try:
+            client = self._open_client()
+            status, data = client.list()
+        except Exception as exc:
+            self._log(f"[GmailIMAP] 自动发现邮箱目录失败: {exc}")
+            return self._discovered_mailboxes
+        finally:
+            if client is not None:
+                self._logout(client)
+
+        if str(status).upper() != "OK" or not data:
+            return self._discovered_mailboxes
+
+        special_markers = ("\\junk", "\\trash", "\\spam")
+        name_markers = ("junk", "trash", "spam", "bin")
+        seen = set(self.mailboxes)
+        for item in data:
+            text = item.decode("utf-8", errors="ignore") if isinstance(item, bytes) else str(item or "")
+            name = self._parse_list_mailbox_name(item)
+            if not name or name in seen:
+                continue
+            normalized = text.lower()
+            basename = name.rsplit("/", 1)[-1].lower()
+            if not any(marker in normalized for marker in special_markers) and basename not in name_markers:
+                continue
+            seen.add(name)
+            self._discovered_mailboxes.append(name)
+        return self._discovered_mailboxes
+
+    def _scan_mailboxes(self) -> list[str]:
+        discovered = self._discover_special_use_mailboxes()
+        if not discovered:
+            return self.mailboxes
+
+        configured = []
+        for raw in re.split(r"[\n,;]+", str(self.mailbox or "INBOX")):
+            mailbox = raw.strip().strip("'\"")
+            if mailbox:
+                configured.append(mailbox)
+        items: list[str] = []
+        seen: set[str] = set()
+        for mailbox in configured + discovered:
+            if mailbox in seen:
+                continue
+            seen.add(mailbox)
+            items.append(mailbox)
+        return items or self.mailboxes
 
     def _message_id(self, mailbox: str, uid: str) -> str:
         if len(self.mailboxes) <= 1:
@@ -724,7 +792,7 @@ class GmailIMAPMailbox(BaseMailbox):
         ids = set()
         last_error: Exception | None = None
         opened_any = False
-        for mailbox in self.mailboxes:
+        for mailbox in self._scan_mailboxes():
             try:
                 client = self._connect(mailbox)
             except Exception as exc:
@@ -809,7 +877,7 @@ class GmailIMAPMailbox(BaseMailbox):
         def poll_once() -> Optional[str]:
             last_error: Exception | None = None
             opened_any = False
-            for mailbox in self.mailboxes:
+            for mailbox in self._scan_mailboxes():
                 try:
                     client = self._connect(mailbox)
                 except Exception as exc:

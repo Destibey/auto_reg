@@ -101,6 +101,7 @@ export default function RegisterTaskPage() {
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir || '',
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
         chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '',
+        chatgpt_camoufox_locale: cfg.chatgpt_camoufox_locale || 'en-US,en',
         chatgpt_camoufox_os: cfg.chatgpt_camoufox_os || '',
         chatgpt_manual_browser_keep_open: parseBooleanConfigValue(cfg.chatgpt_manual_browser_keep_open),
         luckmail_base_url: cfg.luckmail_base_url || 'https://mails.luckyous.com/',
@@ -179,6 +180,7 @@ export default function RegisterTaskPage() {
       chatgpt_manual_browser_profile_dir: values.chatgpt_manual_browser_profile_dir,
       chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
       chatgpt_camoufox_humanize: values.chatgpt_camoufox_humanize,
+      chatgpt_camoufox_locale: values.chatgpt_camoufox_locale,
       chatgpt_camoufox_os: values.chatgpt_camoufox_os,
       chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       luckmail_base_url: values.luckmail_base_url,
@@ -290,6 +292,7 @@ export default function RegisterTaskPage() {
         chatgpt_manual_enable_token_callback: false,
         chatgpt_camoufox_geoip: false,
         chatgpt_camoufox_humanize: '',
+        chatgpt_camoufox_locale: 'en-US,en',
         chatgpt_camoufox_os: '',
         chatgpt_manual_browser_keep_open: false,
       }}>
@@ -445,6 +448,13 @@ export default function RegisterTaskPage() {
                   <Input placeholder="true / 1.5" />
                 </Form.Item>
               </Space>
+              <Form.Item
+                name="chatgpt_camoufox_locale"
+                label="页面语言 Locale"
+                extra="默认 en-US,en：GeoIP 仍跟随代理位置，但 OpenAI 页面语言保持英文；填 auto 可恢复按 GeoIP 自动语言。"
+              >
+                <Input placeholder="en-US,en" />
+              </Form.Item>
               <Alert
                 type="success"
                 showIcon

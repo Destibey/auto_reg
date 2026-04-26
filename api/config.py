@@ -68,6 +68,7 @@ CONFIG_KEYS = [
     "chatgpt_manual_browser_keep_open",
     "chatgpt_camoufox_geoip",
     "chatgpt_camoufox_humanize",
+    "chatgpt_camoufox_locale",
     "chatgpt_camoufox_os",
     "luckmail_base_url",
     "luckmail_api_key",
@@ -126,6 +127,8 @@ def get_config():
         all_cfg["chatgpt_manual_handoff_timeout_seconds"] = "900"
     if not all_cfg.get("chatgpt_manual_email_poll_interval_seconds"):
         all_cfg["chatgpt_manual_email_poll_interval_seconds"] = "10"
+    if not all_cfg.get("chatgpt_camoufox_locale"):
+        all_cfg["chatgpt_camoufox_locale"] = "en-US,en"
     if not all_cfg.get("chatgpt_manual_enable_token_callback"):
         all_cfg["chatgpt_manual_enable_token_callback"] = False
     # 只返回已知 key，未设置的返回空字符串

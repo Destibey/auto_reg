@@ -25,6 +25,7 @@ from .refresh_token_registration_engine import RegistrationResult
 from .utils import generate_random_name, generate_random_password
 
 DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://chatgpt.com/"
+DEFAULT_CHATGPT_CAMOUFOX_LOCALE = "en-US,en"
 
 
 @dataclass
@@ -162,6 +163,15 @@ class BrowserManualHandoffRegistrationEngine:
         except (TypeError, ValueError):
             return None
         return seconds if seconds > 0 else None
+
+    def _camoufox_locale_config(self) -> str:
+        value = str(
+            self.extra_config.get("chatgpt_camoufox_locale")
+            or DEFAULT_CHATGPT_CAMOUFOX_LOCALE
+        ).strip()
+        if value.lower() in {"auto", "geoip", "default", "none", "off"}:
+            return ""
+        return value or DEFAULT_CHATGPT_CAMOUFOX_LOCALE
 
     @staticmethod
     def _camoufox_geoip_available() -> bool:
@@ -661,6 +671,10 @@ class BrowserManualHandoffRegistrationEngine:
         humanize = self._camoufox_humanize_config()
         if humanize is not None:
             launch_kwargs["humanize"] = humanize
+
+        locale = self._camoufox_locale_config()
+        if locale:
+            launch_kwargs["locale"] = locale
 
         if self._bool_config("chatgpt_camoufox_geoip", False):
             if self._camoufox_geoip_available():

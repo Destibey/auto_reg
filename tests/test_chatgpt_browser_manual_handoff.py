@@ -445,6 +445,29 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertEqual(launch_kwargs["os"], "macos")
         self.assertEqual(launch_kwargs["humanize"], 1.5)
         self.assertTrue(launch_kwargs["geoip"])
+        self.assertEqual(launch_kwargs["locale"], "en-US,en")
+
+    def test_camoufox_launch_allows_custom_locale(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_camoufox_locale": "en-GB,en"},
+        )
+
+        launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertEqual(launch_kwargs["locale"], "en-GB,en")
+
+    def test_camoufox_launch_can_leave_locale_automatic(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_camoufox_locale": "auto"},
+        )
+
+        launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertNotIn("locale", launch_kwargs)
 
     def test_camoufox_geoip_without_extra_logs_and_falls_back(self):
         messages = []

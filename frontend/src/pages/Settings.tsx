@@ -301,6 +301,7 @@ const TAB_ITEMS = [
           { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '推荐留空；填写后会复用该 profile' },
           { key: 'chatgpt_camoufox_os', label: 'OS 指纹范围', type: 'select' },
           { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '留空关闭；可填 true 或 1.5' },
+          { key: 'chatgpt_camoufox_locale', label: '页面语言 Locale', placeholder: 'en-US,en；填 auto 则跟随 GeoIP' },
           { key: 'chatgpt_camoufox_geoip', label: 'GeoIP 跟随代理', type: 'boolean' },
           { key: 'chatgpt_manual_browser_keep_open', label: '任务结束保留浏览器', type: 'boolean' },
         ],
@@ -1185,6 +1186,9 @@ export default function Settings() {
       }
       if (!data.chatgpt_manual_email_poll_interval_seconds) {
         data.chatgpt_manual_email_poll_interval_seconds = '10'
+      }
+      if (!data.chatgpt_camoufox_locale) {
+        data.chatgpt_camoufox_locale = 'en-US,en'
       }
       data.chatgpt_manual_enable_token_callback = false
       data.cfworker_domains = parseStoredDomainList(data.cfworker_domains)

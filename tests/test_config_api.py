@@ -28,6 +28,7 @@ def test_config_exposes_camoufox_manual_handoff_defaults(monkeypatch):
     assert "chatgpt_manual_browser_keep_open" in data
     assert "chatgpt_camoufox_geoip" in data
     assert "chatgpt_camoufox_humanize" in data
+    assert data["chatgpt_camoufox_locale"] == "en-US,en"
     assert "chatgpt_camoufox_os" in data
 
 
@@ -46,6 +47,7 @@ def test_config_update_allows_camoufox_manual_handoff_keys(monkeypatch):
                 "chatgpt_manual_browser_keep_open": True,
                 "chatgpt_camoufox_geoip": True,
                 "chatgpt_camoufox_humanize": "1.5",
+                "chatgpt_camoufox_locale": "en-GB,en",
                 "chatgpt_camoufox_os": "macos",
                 "unknown_key": "ignored",
             }
@@ -62,5 +64,6 @@ def test_config_update_allows_camoufox_manual_handoff_keys(monkeypatch):
         "chatgpt_manual_browser_keep_open": True,
         "chatgpt_camoufox_geoip": True,
         "chatgpt_camoufox_humanize": "1.5",
+        "chatgpt_camoufox_locale": "en-GB,en",
         "chatgpt_camoufox_os": "macos",
     }

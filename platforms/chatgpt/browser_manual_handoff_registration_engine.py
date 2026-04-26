@@ -123,6 +123,31 @@ class BrowserManualHandoffRegistrationEngine:
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
+    def _camoufox_humanize_config(self):
+        value = self.extra_config.get("chatgpt_camoufox_humanize")
+        if value in (None, ""):
+            return None
+        if isinstance(value, bool):
+            return True if value else None
+        text = str(value).strip().lower()
+        if text in {"0", "false", "no", "off"}:
+            return None
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        try:
+            seconds = float(text)
+        except (TypeError, ValueError):
+            return None
+        return seconds if seconds > 0 else None
+
+    @staticmethod
+    def _camoufox_geoip_available() -> bool:
+        try:
+            import geoip2  # noqa: F401
+        except Exception:
+            return False
+        return True
+
     def _checkpoint(self) -> None:
         if self.task_control is None:
             return
@@ -256,15 +281,7 @@ class BrowserManualHandoffRegistrationEngine:
             or self._default_manual_profile_dir("chatgpt_camoufox")
         )
         Path(profile_dir).mkdir(parents=True, exist_ok=True)
-        launch_kwargs = {
-            "headless": False,
-            "persistent_context": True,
-            "user_data_dir": profile_dir,
-            "window": (1440, 1000),
-            "enable_cache": True,
-        }
-        if self.proxy_url:
-            launch_kwargs["proxy"] = {"server": self.proxy_url}
+        launch_kwargs = self._build_camoufox_launch_kwargs(profile_dir)
         self._log("启动本地 Camoufox 隔离浏览器...")
         camoufox = Camoufox(**launch_kwargs)
         context = camoufox.__enter__()
@@ -276,6 +293,32 @@ class BrowserManualHandoffRegistrationEngine:
             playwright=camoufox,
             keep_open=self._bool_config("chatgpt_manual_browser_keep_open", False),
         )
+
+    def _build_camoufox_launch_kwargs(self, profile_dir: str) -> dict:
+        launch_kwargs = {
+            "headless": False,
+            "persistent_context": True,
+            "user_data_dir": profile_dir,
+            "enable_cache": True,
+        }
+        if self.proxy_url:
+            launch_kwargs["proxy"] = {"server": self.proxy_url}
+
+        os_value = str(self.extra_config.get("chatgpt_camoufox_os") or "").strip().lower()
+        if os_value in {"windows", "macos", "linux"}:
+            launch_kwargs["os"] = os_value
+
+        humanize = self._camoufox_humanize_config()
+        if humanize is not None:
+            launch_kwargs["humanize"] = humanize
+
+        if self._bool_config("chatgpt_camoufox_geoip", False):
+            if self._camoufox_geoip_available():
+                launch_kwargs["geoip"] = True
+            else:
+                self._log("Camoufox GeoIP 未启用：当前环境未安装 camoufox[geoip] 依赖", "warning")
+
+        return launch_kwargs
 
     def _open_browser_session(self) -> ManualBrowserSession:
         provider = str(

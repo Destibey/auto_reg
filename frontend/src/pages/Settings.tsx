@@ -54,6 +54,12 @@ const SELECT_FIELDS: Record<string, { label: string; value: string }[]> = {
     { label: 'AT（Access Token，推荐）', value: 'at' },
     { label: 'RT（Refresh Token）', value: 'rt' },
   ],
+  chatgpt_camoufox_os: [
+    { label: '自动生成', value: '' },
+    { label: 'macOS', value: 'macos' },
+    { label: 'Windows', value: 'windows' },
+    { label: 'Linux', value: 'linux' },
+  ],
 }
 
 const TAB_ITEMS = [
@@ -293,6 +299,9 @@ const TAB_ITEMS = [
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
           { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '留空使用系统默认用户目录' },
+          { key: 'chatgpt_camoufox_os', label: 'OS 指纹范围', type: 'select' },
+          { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '留空关闭；可填 true 或 1.5' },
+          { key: 'chatgpt_camoufox_geoip', label: 'GeoIP 跟随代理', type: 'boolean' },
           { key: 'chatgpt_manual_browser_keep_open', label: '任务结束保留浏览器', type: 'boolean' },
         ],
       },
@@ -1180,6 +1189,7 @@ export default function Settings() {
       data.cfworker_domains = parseStoredDomainList(data.cfworker_domains)
       data.cfworker_enabled_domains = parseStoredDomainList(data.cfworker_enabled_domains)
       data.cfworker_random_subdomain = parseBooleanConfigValue(data.cfworker_random_subdomain)
+      data.chatgpt_camoufox_geoip = parseBooleanConfigValue(data.chatgpt_camoufox_geoip)
       data.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(data.chatgpt_manual_browser_keep_open)
       form.setFieldsValue(data)
     })
@@ -1205,6 +1215,7 @@ export default function Settings() {
       }
       values.cfworker_random_subdomain = parseBooleanConfigValue(values.cfworker_random_subdomain)
       values.chatgpt_manual_browser_provider = 'camoufox'
+      values.chatgpt_camoufox_geoip = parseBooleanConfigValue(values.chatgpt_camoufox_geoip)
       values.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(values.chatgpt_manual_browser_keep_open)
 
       await apiFetch('/config', { method: 'PUT', body: JSON.stringify({ data: values }) })
@@ -1214,6 +1225,7 @@ export default function Settings() {
         cfworker_domain: domains.length > 0 ? '' : values.cfworker_domain,
         cfworker_random_subdomain: values.cfworker_random_subdomain,
         chatgpt_manual_browser_provider: 'camoufox',
+        chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
         chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       })
       message.success('保存成功')

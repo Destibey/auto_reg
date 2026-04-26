@@ -95,6 +95,9 @@ export default function RegisterTaskPage() {
         chatgpt_manual_handoff_timeout_seconds: cfg.chatgpt_manual_handoff_timeout_seconds || '900',
         chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds || '10',
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir || '',
+        chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
+        chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '',
+        chatgpt_camoufox_os: cfg.chatgpt_camoufox_os || '',
         chatgpt_manual_browser_keep_open: parseBooleanConfigValue(cfg.chatgpt_manual_browser_keep_open),
         luckmail_base_url: cfg.luckmail_base_url || 'https://mails.luckyous.com/',
         luckmail_api_key: cfg.luckmail_api_key || '',
@@ -169,6 +172,9 @@ export default function RegisterTaskPage() {
       chatgpt_manual_handoff_timeout_seconds: values.chatgpt_manual_handoff_timeout_seconds,
       chatgpt_manual_email_poll_interval_seconds: values.chatgpt_manual_email_poll_interval_seconds,
       chatgpt_manual_browser_profile_dir: values.chatgpt_manual_browser_profile_dir,
+      chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
+      chatgpt_camoufox_humanize: values.chatgpt_camoufox_humanize,
+      chatgpt_camoufox_os: values.chatgpt_camoufox_os,
       chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       luckmail_base_url: values.luckmail_base_url,
       luckmail_api_key: values.luckmail_api_key,
@@ -266,6 +272,9 @@ export default function RegisterTaskPage() {
         chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_handoff_timeout_seconds: '900',
         chatgpt_manual_email_poll_interval_seconds: '10',
+        chatgpt_camoufox_geoip: false,
+        chatgpt_camoufox_humanize: '',
+        chatgpt_camoufox_os: '',
         chatgpt_manual_browser_keep_open: false,
       }}>
         <Card title="基本配置" style={{ marginBottom: 16 }}>
@@ -369,6 +378,34 @@ export default function RegisterTaskPage() {
                 extra="可留空，推荐使用后端默认的系统用户目录；只有需要固定/迁移 profile 时再填写绝对路径。"
               >
                 <Input placeholder="/path/to/profile" />
+              </Form.Item>
+              <Space style={{ width: '100%' }}>
+                <Form.Item name="chatgpt_camoufox_os" label="OS 指纹范围" style={{ flex: 1 }}>
+                  <Select
+                    options={[
+                      { value: '', label: '自动生成' },
+                      { value: 'macos', label: 'macOS' },
+                      { value: 'windows', label: 'Windows' },
+                      { value: 'linux', label: 'Linux' },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="chatgpt_camoufox_humanize"
+                  label="Humanize 鼠标轨迹"
+                  style={{ flex: 1 }}
+                  extra="留空关闭；可填 true 或最大移动秒数，如 1.5。"
+                >
+                  <Input placeholder="true / 1.5" />
+                </Form.Item>
+              </Space>
+              <Form.Item
+                name="chatgpt_camoufox_geoip"
+                label="GeoIP 跟随代理"
+                valuePropName="checked"
+                extra="需安装 camoufox[geoip]；未安装时后端会自动跳过并写日志。"
+              >
+                <Checkbox>根据代理 IP 匹配时区、语言和地理位置</Checkbox>
               </Form.Item>
               <Form.Item name="chatgpt_manual_browser_keep_open" label="任务结束后保留浏览器" valuePropName="checked">
                 <Checkbox>保留窗口，便于继续查看现场</Checkbox>

@@ -120,6 +120,51 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertEqual(session.provider, "fake")
         mocked.assert_called_once()
 
+    def test_camoufox_launch_uses_generated_window_by_default(self):
+        engine = self._make_engine()
+
+        launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertEqual(launch_kwargs["user_data_dir"], "/tmp/autoreg-camoufox")
+        self.assertNotIn("window", launch_kwargs)
+        self.assertNotIn("geoip", launch_kwargs)
+        self.assertNotIn("humanize", launch_kwargs)
+        self.assertNotIn("os", launch_kwargs)
+
+    def test_camoufox_launch_accepts_normal_runtime_options(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            proxy_url="http://127.0.0.1:7890",
+            extra_config={
+                "chatgpt_camoufox_os": "macos",
+                "chatgpt_camoufox_humanize": "1.5",
+                "chatgpt_camoufox_geoip": True,
+            },
+        )
+
+        with mock.patch.object(engine, "_camoufox_geoip_available", return_value=True):
+            launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertEqual(launch_kwargs["proxy"], {"server": "http://127.0.0.1:7890"})
+        self.assertEqual(launch_kwargs["os"], "macos")
+        self.assertEqual(launch_kwargs["humanize"], 1.5)
+        self.assertTrue(launch_kwargs["geoip"])
+
+    def test_camoufox_geoip_without_extra_logs_and_falls_back(self):
+        messages = []
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=messages.append,
+            extra_config={"chatgpt_camoufox_geoip": True},
+        )
+
+        with mock.patch.object(engine, "_camoufox_geoip_available", return_value=False):
+            launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertNotIn("geoip", launch_kwargs)
+        self.assertTrue(any("camoufox[geoip]" in msg.lower() for msg in messages))
+
     def test_add_phone_detection_reads_page_text(self):
         engine = self._make_engine()
 

@@ -8,6 +8,7 @@ from core.base_mailbox import MailboxAccount, create_mailbox
 class _FakeIMAP:
     instances = []
     messages = {}
+    messages_by_mailbox = {}
     searched = False
 
     def __init__(self, host, port):
@@ -27,13 +28,21 @@ class _FakeIMAP:
 
     def uid(self, command, *args):
         command = command.upper()
+        messages = (
+            _FakeIMAP.messages_by_mailbox.get(self.selected_mailbox)
+            if _FakeIMAP.messages_by_mailbox
+            else _FakeIMAP.messages
+            if self.selected_mailbox == "INBOX"
+            else {}
+        )
+        messages = messages or {}
         if command == "SEARCH":
             _FakeIMAP.searched = True
-            ids = b" ".join(_FakeIMAP.messages.keys())
+            ids = b" ".join(messages.keys())
             return "OK", [ids]
         if command == "FETCH":
             uid = args[0]
-            return "OK", [(b"BODY[]", _FakeIMAP.messages[uid])]
+            return "OK", [(b"BODY[]", messages[uid])]
         raise AssertionError(f"unexpected IMAP command: {command}")
 
     def logout(self):
@@ -44,6 +53,7 @@ class GmailIMAPMailboxTests(unittest.TestCase):
     def setUp(self):
         _FakeIMAP.instances = []
         _FakeIMAP.messages = {}
+        _FakeIMAP.messages_by_mailbox = {}
         _FakeIMAP.searched = False
 
     def _mail_bytes(self, *, to_addr, body, extra_headers=None):
@@ -91,7 +101,7 @@ class GmailIMAPMailboxTests(unittest.TestCase):
 
         ids = mailbox.get_current_ids(MailboxAccount(email="alias@example.com"))
 
-        self.assertEqual(ids, {"101"})
+        self.assertEqual(ids, {"INBOX:101"})
         self.assertEqual(_FakeIMAP.instances[0].host, "imap.gmail.com")
         self.assertEqual(_FakeIMAP.instances[0].port, 993)
         self.assertEqual(_FakeIMAP.instances[0].login_args, ("owner@gmail.com", "app-pass"))
@@ -120,6 +130,38 @@ class GmailIMAPMailboxTests(unittest.TestCase):
         )
 
         self.assertEqual(code, "654321")
+
+    @mock.patch("imaplib.IMAP4_SSL", _FakeIMAP)
+    def test_wait_for_code_scans_gmail_spam_and_trash_when_inbox_is_empty(self):
+        _FakeIMAP.messages_by_mailbox = {
+            "INBOX": {},
+            "[Gmail]/Spam": {
+                b"201": self._mail_bytes(
+                    to_addr="alias@example.com",
+                    body="OpenAI verification code: 246810",
+                )
+            },
+            "[Gmail]/Trash": {},
+        }
+        mailbox = create_mailbox(
+            "gmail_imap",
+            extra={
+                "gmail_imap_email": "owner@gmail.com",
+                "gmail_imap_app_password": "app-pass",
+                "gmail_imap_target_email": "alias@example.com",
+            },
+        )
+
+        code = mailbox.wait_for_code(
+            MailboxAccount(email="alias@example.com"),
+            timeout=1,
+        )
+
+        self.assertEqual(code, "246810")
+        self.assertEqual(
+            [instance.selected_mailbox for instance in _FakeIMAP.instances],
+            ["INBOX", "[Gmail]/Spam"],
+        )
 
     @mock.patch("imaplib.IMAP4_SSL", _FakeIMAP)
     def test_wait_for_code_keeps_forwarded_alias_when_body_has_blank_line(self):

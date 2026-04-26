@@ -132,7 +132,15 @@ if os.path.isdir(_static_dir):
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
-        return FileResponse(os.path.join(_static_dir, "index.html"))
+        static_root = os.path.abspath(_static_dir)
+        requested = os.path.abspath(os.path.join(static_root, full_path))
+        if (
+            full_path
+            and os.path.commonpath([static_root, requested]) == static_root
+            and os.path.isfile(requested)
+        ):
+            return FileResponse(requested)
+        return FileResponse(os.path.join(static_root, "index.html"))
 
 
 if __name__ == "__main__":

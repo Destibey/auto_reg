@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 from typing import Optional
+from datetime import datetime, timezone
 from core.db import TaskLog, engine
 from core.task_runtime import (
     RegisterTaskStore,
@@ -506,21 +507,6 @@ def run_scheduled_task_now(task_id: str, background_tasks: BackgroundTasks):
     
     return {"task_id": run_task_id, "status": "running"}
 
-@router.post("/schedule/{task_id}/toggle")
-def toggle_scheduled_task(task_id: str):
-    """暂停或恢复定时任务"""
-    from core.scheduler import get_scheduled_register_tasks, add_scheduled_register_task
-    
-    tasks = get_scheduled_register_tasks()
-    if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
-    
-    task_config = tasks[task_id]
-    task_config['paused'] = not task_config.get('paused', False)
-    add_scheduled_register_task(task_id, task_config)
-    
-    return {"task_id": task_id, "paused": task_config['paused']}
-
 @router.post("/schedule")
 def create_scheduled_task(body: RegisterTaskRequest):
     """创建定时注册任务"""
@@ -602,13 +588,6 @@ def list_scheduled_tasks():
     
     return {"tasks": result}
 
-
-@router.delete("/schedule/{task_id}")
-def delete_scheduled_task(task_id: str):
-    """删除定时任务"""
-    from core.scheduler import remove_scheduled_register_task
-    remove_scheduled_register_task(task_id)
-    return {"ok": True}
 
 @router.get("/{task_id}")
 def get_task(task_id: str):

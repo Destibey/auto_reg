@@ -2,6 +2,7 @@
 
 import json
 import random
+import re
 import time
 
 from abc import ABC, abstractmethod
@@ -622,6 +623,7 @@ class GmailIMAPMailbox(BaseMailbox):
         except Exception:
             self.port = 993
         self.mailbox = str(mailbox or "INBOX").strip() or "INBOX"
+        self.mailboxes = self._resolve_mailboxes(self.mailbox)
         self.target_email = self._normalize_email(target_email)
         self.target_domain = self._normalize_domain(target_domain)
 
@@ -635,6 +637,24 @@ class GmailIMAPMailbox(BaseMailbox):
         if domain.startswith("@"):
             domain = domain[1:]
         return domain
+
+    def _resolve_mailboxes(self, value: Any) -> list[str]:
+        items: list[str] = []
+        seen: set[str] = set()
+        for raw in re.split(r"[\n,;]+", str(value or "INBOX")):
+            mailbox = raw.strip().strip("'\"")
+            if not mailbox or mailbox in seen:
+                continue
+            seen.add(mailbox)
+            items.append(mailbox)
+
+        if self.host.lower() == "imap.gmail.com":
+            for mailbox in ("[Gmail]/Spam", "[Gmail]/Trash"):
+                if mailbox not in seen:
+                    seen.add(mailbox)
+                    items.append(mailbox)
+
+        return items or ["INBOX"]
 
     def _generate_local_part(self) -> str:
         import string
@@ -653,14 +673,23 @@ class GmailIMAPMailbox(BaseMailbox):
                 "Gmail IMAP 未配置注册邮箱：请设置 gmail_imap_target_email 或 gmail_imap_target_domain"
             )
 
-    def _connect(self):
+    def _connect(self, mailbox: str | None = None):
         import imaplib
 
         self._ensure_configured()
+        selected_mailbox = str(mailbox or self.mailbox or "INBOX").strip() or "INBOX"
         client = imaplib.IMAP4_SSL(self.host, self.port)
         client.login(self.username, self.app_password)
-        client.select(self.mailbox)
+        status, data = client.select(selected_mailbox)
+        if str(status).upper() != "OK":
+            self._logout(client)
+            raise RuntimeError(f"Gmail IMAP 无法打开邮箱目录: {selected_mailbox} ({data})")
         return client
+
+    def _message_id(self, mailbox: str, uid: str) -> str:
+        if len(self.mailboxes) <= 1:
+            return str(uid)
+        return f"{mailbox}:{uid}"
 
     def _logout(self, client) -> None:
         try:
@@ -692,11 +721,24 @@ class GmailIMAPMailbox(BaseMailbox):
         ]
 
     def get_current_ids(self, account: MailboxAccount) -> set:
-        client = self._connect()
-        try:
-            return set(self._search_uids(client))
-        finally:
-            self._logout(client)
+        ids = set()
+        last_error: Exception | None = None
+        opened_any = False
+        for mailbox in self.mailboxes:
+            try:
+                client = self._connect(mailbox)
+            except Exception as exc:
+                last_error = exc
+                self._log(f"[GmailIMAP] 跳过邮箱目录 {mailbox}: {exc}")
+                continue
+            opened_any = True
+            try:
+                ids.update(self._message_id(mailbox, uid) for uid in self._search_uids(client))
+            finally:
+                self._logout(client)
+        if not opened_any and last_error:
+            raise last_error
+        return ids
 
     def _fetch_raw_message(self, client, uid: str) -> bytes:
         status, data = client.uid("fetch", str(uid).encode("ascii"), "(BODY.PEEK[])")
@@ -765,23 +807,35 @@ class GmailIMAPMailbox(BaseMailbox):
         }
 
         def poll_once() -> Optional[str]:
-            client = self._connect()
-            try:
-                for uid in reversed(self._search_uids(client)):
-                    if uid in seen:
-                        continue
-                    seen.add(uid)
-                    text = self._message_text(self._fetch_raw_message(client, uid))
-                    if target_email and target_email not in text.lower():
-                        continue
-                    if keyword and keyword.lower() not in text.lower():
-                        continue
-                    code = self._safe_extract(text, code_pattern)
-                    if code and code not in exclude_codes:
-                        self._log(f"[GmailIMAP] 收到验证码: {code}")
-                        return code
-            finally:
-                self._logout(client)
+            last_error: Exception | None = None
+            opened_any = False
+            for mailbox in self.mailboxes:
+                try:
+                    client = self._connect(mailbox)
+                except Exception as exc:
+                    last_error = exc
+                    self._log(f"[GmailIMAP] 跳过邮箱目录 {mailbox}: {exc}")
+                    continue
+                opened_any = True
+                try:
+                    for uid in reversed(self._search_uids(client)):
+                        message_id = self._message_id(mailbox, uid)
+                        if message_id in seen or str(uid) in seen:
+                            continue
+                        seen.add(message_id)
+                        text = self._message_text(self._fetch_raw_message(client, uid))
+                        if target_email and target_email not in text.lower():
+                            continue
+                        if keyword and keyword.lower() not in text.lower():
+                            continue
+                        code = self._safe_extract(text, code_pattern)
+                        if code and code not in exclude_codes:
+                            self._log(f"[GmailIMAP] 收到验证码: {code}")
+                            return code
+                finally:
+                    self._logout(client)
+            if not opened_any and last_error:
+                raise last_error
             return None
 
         return self._run_polling_wait(

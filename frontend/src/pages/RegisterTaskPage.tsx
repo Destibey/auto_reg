@@ -464,8 +464,12 @@ export default function RegisterTaskPage() {
               <Form.Item name="gmail_imap_port" label="IMAP Port">
                 <Input placeholder="993" />
               </Form.Item>
-              <Form.Item name="gmail_imap_mailbox" label="邮箱目录">
-                <Input placeholder="INBOX" />
+              <Form.Item
+                name="gmail_imap_mailbox"
+                label="邮箱目录"
+                extra="可用英文逗号分隔多个 IMAP 目录；Gmail 默认会补扫 Spam/Trash。"
+              >
+                <Input placeholder="INBOX,[Gmail]/Spam,[Gmail]/Trash" />
               </Form.Item>
               <Form.Item
                 name="gmail_imap_target_email"

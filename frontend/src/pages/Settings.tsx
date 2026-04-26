@@ -54,11 +54,6 @@ const SELECT_FIELDS: Record<string, { label: string; value: string }[]> = {
     { label: 'AT（Access Token，推荐）', value: 'at' },
     { label: 'RT（Refresh Token）', value: 'rt' },
   ],
-  chatgpt_manual_browser_provider: [
-    { label: 'Camoufox（免费本地）', value: 'camoufox' },
-    { label: 'AdsPower / SunBrowser', value: 'adspower' },
-    { label: '本地隔离 Chromium', value: 'playwright' },
-  ],
 }
 
 const TAB_ITEMS = [
@@ -292,17 +287,12 @@ const TAB_ITEMS = [
         ],
       },
       {
-        title: '浏览器人工接管',
-        desc: 'ChatGPT browser_manual_handoff 模式使用；默认免费 Camoufox，AdsPower 可选',
+        title: 'Camoufox 浏览器人工接管',
+        desc: 'ChatGPT browser_manual_handoff 模式使用；只启动本地 Camoufox 隔离有头浏览器，等待你手动完成 OAuth callback。',
         fields: [
-          { key: 'chatgpt_manual_browser_provider', label: '浏览器后端', type: 'select' },
-          { key: 'chatgpt_adspower_api_url', label: 'AdsPower Local API', placeholder: 'http://local.adspower.net:50325' },
-          { key: 'chatgpt_adspower_profile_id', label: 'AdsPower Profile ID', placeholder: 'user_id / profile_id' },
-          { key: 'chatgpt_adspower_serial_number', label: 'AdsPower Serial Number', placeholder: '未填 Profile ID 时使用' },
-          { key: 'chatgpt_adspower_api_key', label: 'AdsPower API Key', secret: true, placeholder: '启用安全校验时填写' },
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
-          { key: 'chatgpt_manual_browser_profile_dir', label: '本地浏览器 Profile 目录', placeholder: '.manual_profiles/chatgpt_camoufox' },
+          { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '留空使用系统默认用户目录' },
           { key: 'chatgpt_manual_browser_keep_open', label: '任务结束保留浏览器', type: 'boolean' },
         ],
       },
@@ -1181,9 +1171,6 @@ export default function Settings() {
       if (!data.chatgpt_manual_browser_provider) {
         data.chatgpt_manual_browser_provider = 'camoufox'
       }
-      if (!data.chatgpt_adspower_api_url) {
-        data.chatgpt_adspower_api_url = 'http://local.adspower.net:50325'
-      }
       if (!data.chatgpt_manual_handoff_timeout_seconds) {
         data.chatgpt_manual_handoff_timeout_seconds = '900'
       }
@@ -1217,6 +1204,7 @@ export default function Settings() {
         values.cfworker_domain = ''
       }
       values.cfworker_random_subdomain = parseBooleanConfigValue(values.cfworker_random_subdomain)
+      values.chatgpt_manual_browser_provider = 'camoufox'
       values.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(values.chatgpt_manual_browser_keep_open)
 
       await apiFetch('/config', { method: 'PUT', body: JSON.stringify({ data: values }) })
@@ -1225,6 +1213,7 @@ export default function Settings() {
         cfworker_enabled_domains: enabledDomains,
         cfworker_domain: domains.length > 0 ? '' : values.cfworker_domain,
         cfworker_random_subdomain: values.cfworker_random_subdomain,
+        chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       })
       message.success('保存成功')

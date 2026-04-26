@@ -50,6 +50,7 @@ class BrowserManualHandoffChatGPTRegistrationRequestAdapter
       ...extra,
       chatgpt_registration_mode: this.mode,
       chatgpt_has_refresh_token_solution: true,
+      chatgpt_manual_browser_provider: 'camoufox',
     }
   }
 }

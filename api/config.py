@@ -60,6 +60,11 @@ CONFIG_KEYS = [
     "smstome_otp_timeout_seconds",
     "smstome_poll_interval_seconds",
     "smstome_sync_max_pages_per_country",
+    "chatgpt_manual_browser_provider",
+    "chatgpt_manual_handoff_timeout_seconds",
+    "chatgpt_manual_email_poll_interval_seconds",
+    "chatgpt_manual_browser_profile_dir",
+    "chatgpt_manual_browser_keep_open",
     "luckmail_base_url",
     "luckmail_api_key",
     "luckmail_email_type",
@@ -111,6 +116,12 @@ def get_config():
         all_cfg["gmail_imap_port"] = "993"
     if not all_cfg.get("gmail_imap_mailbox"):
         all_cfg["gmail_imap_mailbox"] = "INBOX"
+    if not all_cfg.get("chatgpt_manual_browser_provider"):
+        all_cfg["chatgpt_manual_browser_provider"] = "camoufox"
+    if not all_cfg.get("chatgpt_manual_handoff_timeout_seconds"):
+        all_cfg["chatgpt_manual_handoff_timeout_seconds"] = "900"
+    if not all_cfg.get("chatgpt_manual_email_poll_interval_seconds"):
+        all_cfg["chatgpt_manual_email_poll_interval_seconds"] = "10"
     # 只返回已知 key，未设置的返回空字符串
     return {k: all_cfg.get(k, "") for k in CONFIG_KEYS}
 

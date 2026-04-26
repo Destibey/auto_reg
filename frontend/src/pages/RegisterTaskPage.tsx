@@ -91,11 +91,7 @@ export default function RegisterTaskPage() {
         smstome_otp_timeout_seconds: cfg.smstome_otp_timeout_seconds || '',
         smstome_poll_interval_seconds: cfg.smstome_poll_interval_seconds || '',
         smstome_sync_max_pages_per_country: cfg.smstome_sync_max_pages_per_country || '',
-        chatgpt_manual_browser_provider: cfg.chatgpt_manual_browser_provider || 'camoufox',
-        chatgpt_adspower_api_url: cfg.chatgpt_adspower_api_url || 'http://local.adspower.net:50325',
-        chatgpt_adspower_profile_id: cfg.chatgpt_adspower_profile_id || '',
-        chatgpt_adspower_serial_number: cfg.chatgpt_adspower_serial_number || '',
-        chatgpt_adspower_api_key: cfg.chatgpt_adspower_api_key || '',
+        chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_handoff_timeout_seconds: cfg.chatgpt_manual_handoff_timeout_seconds || '900',
         chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds || '10',
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir || '',
@@ -169,11 +165,7 @@ export default function RegisterTaskPage() {
       smstome_otp_timeout_seconds: values.smstome_otp_timeout_seconds,
       smstome_poll_interval_seconds: values.smstome_poll_interval_seconds,
       smstome_sync_max_pages_per_country: values.smstome_sync_max_pages_per_country,
-      chatgpt_manual_browser_provider: values.chatgpt_manual_browser_provider,
-      chatgpt_adspower_api_url: values.chatgpt_adspower_api_url,
-      chatgpt_adspower_profile_id: values.chatgpt_adspower_profile_id,
-      chatgpt_adspower_serial_number: values.chatgpt_adspower_serial_number,
-      chatgpt_adspower_api_key: values.chatgpt_adspower_api_key,
+      chatgpt_manual_browser_provider: 'camoufox',
       chatgpt_manual_handoff_timeout_seconds: values.chatgpt_manual_handoff_timeout_seconds,
       chatgpt_manual_email_poll_interval_seconds: values.chatgpt_manual_email_poll_interval_seconds,
       chatgpt_manual_browser_profile_dir: values.chatgpt_manual_browser_profile_dir,
@@ -272,7 +264,6 @@ export default function RegisterTaskPage() {
         maliapi_auto_domain_strategy: 'balanced',
         solver_url: 'http://localhost:8889',
         chatgpt_manual_browser_provider: 'camoufox',
-        chatgpt_adspower_api_url: 'http://local.adspower.net:50325',
         chatgpt_manual_handoff_timeout_seconds: '900',
         chatgpt_manual_email_poll_interval_seconds: '10',
         chatgpt_manual_browser_keep_open: false,
@@ -352,31 +343,18 @@ export default function RegisterTaskPage() {
           chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF && (
             <Card title="ChatGPT 浏览器人工接管" style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                默认使用免费本地 Camoufox；AdsPower/SunBrowser 仍可作为可选商业 profile 后端。
+                使用本地 Camoufox 隔离有头浏览器。AutoReg 只负责打开浏览器、提示邮箱验证码并等待 OAuth callback；页面内操作由你手动完成。
               </Text>
-              <Form.Item name="chatgpt_manual_browser_provider" label="浏览器后端">
-                <Select
-                  options={[
-                    { value: 'camoufox', label: 'Camoufox（免费本地）' },
-                    { value: 'adspower', label: 'AdsPower / SunBrowser' },
-                    { value: 'playwright', label: '本地隔离 Chromium' },
-                  ]}
-                />
+              <Form.Item name="chatgpt_manual_browser_provider" hidden>
+                <Input />
               </Form.Item>
-              <Form.Item name="chatgpt_adspower_api_url" label="AdsPower Local API">
-                <Input placeholder="http://local.adspower.net:50325" />
-              </Form.Item>
-              <Space style={{ width: '100%' }}>
-                <Form.Item name="chatgpt_adspower_profile_id" label="AdsPower Profile ID" style={{ flex: 1 }}>
-                  <Input placeholder="user_id / profile_id" />
-                </Form.Item>
-                <Form.Item name="chatgpt_adspower_serial_number" label="Serial Number" style={{ flex: 1 }}>
-                  <Input placeholder="未填 Profile ID 时使用" />
-                </Form.Item>
-              </Space>
-              <Form.Item name="chatgpt_adspower_api_key" label="AdsPower API Key（可选）">
-                <Input.Password placeholder="启用安全校验时填写" />
-              </Form.Item>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="浏览器后端：Camoufox（免费本地）"
+                description="如果留空 Profile 目录，后端会使用系统用户目录下的 AutoReg/manual_profiles/chatgpt_camoufox，不再写入项目目录。"
+              />
               <Space style={{ width: '100%' }}>
                 <Form.Item name="chatgpt_manual_handoff_timeout_seconds" label="人工接管等待秒数" style={{ flex: 1 }}>
                   <Input placeholder="900" />
@@ -387,8 +365,8 @@ export default function RegisterTaskPage() {
               </Space>
               <Form.Item
                 name="chatgpt_manual_browser_profile_dir"
-                label="本地 Chromium Profile 目录（兜底）"
-                extra="仅浏览器后端选择本地隔离 Chromium 时使用；留空则使用项目下 .manual_profiles/chatgpt。"
+                label="Camoufox Profile 目录"
+                extra="可留空，推荐使用后端默认的系统用户目录；只有需要固定/迁移 profile 时再填写绝对路径。"
               >
                 <Input placeholder="/path/to/profile" />
               </Form.Item>

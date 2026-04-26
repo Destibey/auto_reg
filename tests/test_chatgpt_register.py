@@ -7,6 +7,7 @@ from platforms.chatgpt.refresh_token_registration_engine import (
     RefreshTokenRegistrationEngine,
     SignupFormResult,
 )
+from platforms.chatgpt.chatgpt_client import ChatGPTClient
 
 
 class DummyEmailService:
@@ -113,6 +114,26 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIsNone(engine.email)
         self.assertIn("返回空邮箱地址", "\n".join(engine.logs))
+
+    @mock.patch(
+        "platforms.chatgpt.refresh_token_registration_engine.generate_random_user_info",
+        return_value={"name": "Jane Miller", "age": 28},
+    )
+    def test_create_user_account_uses_age_payload(self, _generate_user_info):
+        engine = self._make_engine()
+        engine._device_id = "device-fixed"
+        engine.session = mock.Mock()
+        engine.session.post.return_value = mock.Mock(status_code=200, text="")
+
+        with mock.patch.object(engine, "_build_json_headers", return_value={}), \
+            mock.patch.object(engine, "_check_sentinel", return_value=None):
+            ok = engine._create_user_account()
+
+        payload = json.loads(engine.session.post.call_args.kwargs["data"])
+        self.assertTrue(ok)
+        self.assertEqual(payload, {"name": "Jane Miller", "age": 28})
+        self.assertNotIn("birthdate", payload)
+        self.assertNotIn("生日", "\n".join(engine.logs))
 
     @mock.patch("platforms.chatgpt.refresh_token_registration_engine.seed_oai_device_cookie")
     @mock.patch(
@@ -309,6 +330,23 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         )
         headers = engine.session.post.call_args.kwargs["headers"]
         self.assertEqual(headers["openai-sentinel-token"], '{"flow":"password_verify"}')
+
+    def test_chatgpt_client_create_account_uses_age_payload(self):
+        client = ChatGPTClient(verbose=False)
+        client.session = mock.Mock()
+        response = mock.Mock(status_code=200, url="https://auth.openai.com/about-you")
+        response.json.return_value = {}
+        client.session.post.return_value = response
+
+        with mock.patch.object(client, "_get_sentinel_token", return_value=None), \
+            mock.patch.object(client, "_headers", return_value={}), \
+            mock.patch.object(client, "_browser_pause", return_value=None):
+            ok, _state = client.create_account("Jane", "Miller", 28, return_state=True)
+
+        self.assertTrue(ok)
+        payload = client.session.post.call_args.kwargs["json"]
+        self.assertEqual(payload, {"name": "Jane Miller", "age": 28})
+        self.assertNotIn("birthdate", payload)
 
     def test_resolve_oauth_callback_url_handles_organization_select_redirect(self):
         engine = self._make_engine()

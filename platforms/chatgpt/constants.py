@@ -3,7 +3,6 @@
 """
 
 import random
-from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Tuple
 
@@ -172,35 +171,23 @@ def generate_random_user_info() -> dict:
     生成随机用户信息
 
     Returns:
-        包含 name 和 birthdate 的字典
+        包含 name 和 age 的字典
     """
     # 随机选择名字
     name = random.choice(FIRST_NAMES)
 
-    # 生成随机生日（20-45岁）
-    current_year = datetime.now().year
-    birth_year = random.randint(current_year - MAX_REGISTRATION_AGE, current_year - MIN_REGISTRATION_AGE)
-    birth_month = random.randint(1, 12)
-    # 根据月份确定天数
-    if birth_month in [1, 3, 5, 7, 8, 10, 12]:
-        birth_day = random.randint(1, 31)
-    elif birth_month in [4, 6, 9, 11]:
-        birth_day = random.randint(1, 30)
-    else:
-        # 2月，简化处理
-        birth_day = random.randint(1, 28)
-
-    birthdate = f"{birth_year}-{birth_month:02d}-{birth_day:02d}"
+    # ChatGPT 当前 about-you 页面收集年龄。
+    age = random.randint(MIN_REGISTRATION_AGE, MAX_REGISTRATION_AGE)
 
     return {
         "name": name,
-        "birthdate": birthdate
+        "age": age,
     }
 
 # 保留默认值供兼容
 DEFAULT_USER_INFO = {
     "name": "Neo",
-    "birthdate": "2000-02-20",
+    "age": 26,
 }
 
 # ============================================================================

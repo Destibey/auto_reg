@@ -279,9 +279,9 @@ class OAuthPkceClient:
     # 步骤 8：创建账户
     # ══════════════════════════════════════════════════════════════════
 
-    def create_account(self, name: str, birthdate: str) -> None:
-        """提交姓名和生日完成账户创建。"""
-        self._log(f"创建账户: {name} ({birthdate})")
+    def create_account(self, name: str, age: int) -> None:
+        """提交姓名和年龄完成账户创建。"""
+        self._log(f"创建账户: {name} ({age})")
 
         resp = self.session.post(
             f"{AUTH_BASE}/api/accounts/create_account",
@@ -290,7 +290,7 @@ class OAuthPkceClient:
                 "accept": "application/json",
                 "content-type": "application/json",
             },
-            data=json.dumps({"name": name, "birthdate": birthdate}),
+            data=json.dumps({"name": name, "age": int(age)}),
             timeout=30,
         )
         if resp.status_code != 200:

@@ -18,6 +18,11 @@ class FakeEmailService:
         return ""
 
 
+class FakeCodeEmailService(FakeEmailService):
+    def get_verification_code(self, **_kwargs):
+        return "123456"
+
+
 class FakePage:
     def __init__(self):
         self.goto_url = ""
@@ -346,6 +351,44 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             engine._handle_page_paste("manual@example.com")
 
         self.assertEqual(copied, ["manual@example.com", "pw-demo"])
+
+    def test_manual_clipboard_appends_code_name_and_age(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeCodeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_manual_handoff_timeout_seconds": 5,
+                "chatgpt_manual_clipboard_sequence": True,
+            },
+        )
+        engine.email = "manual@example.com"
+        engine.email_info = {"service_id": "mail-1"}
+        copied = []
+
+        with mock.patch.object(engine, "_set_system_clipboard", side_effect=lambda value: copied.append(value) or True):
+            with mock.patch.object(
+                engine,
+                "_manual_signup_user_info",
+                return_value={"name": "Jane Miller", "age": "28"},
+            ):
+                engine._prepare_manual_clipboard("manual@example.com", "pw-demo")
+                engine._handle_page_paste("manual@example.com")
+                engine._handle_page_paste("pw-demo")
+                engine._poll_email_code_for_user()
+                engine._handle_page_paste("123456")
+                engine._handle_page_paste("Jane Miller")
+
+        self.assertEqual(
+            copied,
+            [
+                "manual@example.com",
+                "pw-demo",
+                "123456",
+                "Jane Miller",
+                "28",
+            ],
+        )
+        self.assertFalse(any("生日" in log or "birth" in log.lower() for log in engine.logs))
 
     def test_manual_clipboard_advances_when_email_appears_in_input(self):
         session = FakeBrowserSession()

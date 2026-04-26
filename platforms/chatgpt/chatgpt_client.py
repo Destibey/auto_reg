@@ -744,14 +744,14 @@ class ChatGPTClient:
             self._log(f"验证异常: {e}")
             return False, str(e)
 
-    def create_account(self, first_name, last_name, birthdate, return_state=False):
+    def create_account(self, first_name, last_name, age, return_state=False):
         """
-        完成账号创建（提交姓名和生日）
+        完成账号创建（提交姓名和年龄）
 
         Args:
             first_name: 名
             last_name: 姓
-            birthdate: 生日 (YYYY-MM-DD)
+            age: 年龄
 
         Returns:
             tuple: (success, message)
@@ -786,7 +786,7 @@ class ChatGPTClient:
 
         payload = {
             "name": name,
-            "birthdate": birthdate,
+            "age": int(age),
         }
 
         try:
@@ -813,7 +813,7 @@ class ChatGPTClient:
             return False, str(e)
 
     def register_complete_flow(
-        self, email, password, first_name, last_name, birthdate, skymail_client
+        self, email, password, first_name, last_name, age, skymail_client
     ):
         """
         完整的注册流程（基于原版 run_register 方法）
@@ -823,7 +823,7 @@ class ChatGPTClient:
             password: 密码
             first_name: 名
             last_name: 姓
-            birthdate: 生日
+            age: 年龄
             skymail_client: Skymail 客户端（用于获取验证码）
 
         Returns:
@@ -933,7 +933,7 @@ class ChatGPTClient:
                 success, next_state = self.create_account(
                     first_name,
                     last_name,
-                    birthdate,
+                    age,
                     return_state=True,
                 )
                 if not success:

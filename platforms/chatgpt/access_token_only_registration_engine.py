@@ -5,6 +5,7 @@
 
 import time
 import logging
+import random
 from datetime import datetime
 from typing import Optional, Callable
 
@@ -12,7 +13,8 @@ from core.task_runtime import TaskInterruption
 from platforms.chatgpt.refresh_token_registration_engine import RegistrationResult
 
 from .chatgpt_client import ChatGPTClient
-from .utils import generate_random_name, generate_random_birthday
+from .constants import MAX_REGISTRATION_AGE, MIN_REGISTRATION_AGE
+from .utils import generate_random_name
 
 logger = logging.getLogger(__name__)
 
@@ -121,12 +123,12 @@ class AccessTokenOnlyRegistrationEngine:
                     pwd = self.password or "AAb1234567890!"
                     result.password = pwd
 
-                    # 随机姓名、生日
+                    # 随机姓名、年龄
                     first_name, last_name = generate_random_name()
-                    birthdate = generate_random_birthday()
+                    age = random.randint(MIN_REGISTRATION_AGE, MAX_REGISTRATION_AGE)
 
                     self._log(f"邮箱: {email_addr}, 密码: {pwd}")
-                    self._log(f"注册信息: {first_name} {last_name}, 生日: {birthdate}")
+                    self._log(f"注册信息: {first_name} {last_name}, 年龄: {age}")
 
                     # 使用包装器为底层客户端提供接码服务
                     skymail_adapter = EmailServiceAdapter(self.email_service, email_addr, self._log)
@@ -142,7 +144,7 @@ class AccessTokenOnlyRegistrationEngine:
                     self._log("步骤 1/2: 执行注册状态机...")
 
                     success, msg = chatgpt_client.register_complete_flow(
-                        email_addr, pwd, first_name, last_name, birthdate, skymail_adapter
+                        email_addr, pwd, first_name, last_name, age, skymail_adapter
                     )
 
                     if not success:

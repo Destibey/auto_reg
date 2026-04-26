@@ -1267,7 +1267,7 @@ class RefreshTokenRegistrationEngine:
         """创建用户账户"""
         try:
             user_info = generate_random_user_info()
-            self._log(f"生成用户信息: {user_info['name']}, 生日: {user_info['birthdate']}")
+            self._log(f"生成用户信息: {user_info['name']}, 年龄: {user_info['age']}")
             create_account_body = json.dumps(user_info)
 
             headers = self._build_json_headers(

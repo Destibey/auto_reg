@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -18,10 +19,10 @@ import requests
 
 from core.task_runtime import TaskInterruption
 
-from .constants import OAUTH_REDIRECT_URI
+from .constants import MAX_REGISTRATION_AGE, MIN_REGISTRATION_AGE, OAUTH_REDIRECT_URI
 from .oauth import OAuthManager, OAuthStart
 from .refresh_token_registration_engine import RegistrationResult
-from .utils import generate_random_password
+from .utils import generate_random_name, generate_random_password
 
 DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://chatgpt.com/"
 
@@ -120,6 +121,7 @@ class BrowserManualHandoffRegistrationEngine:
         self._clipboard_index = 0
         self._last_clipboard_value = ""
         self._saw_manual_credential_paste = False
+        self._manual_user_info: dict[str, str] = {}
 
     def _log(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -254,6 +256,35 @@ class BrowserManualHandoffRegistrationEngine:
             self._saw_manual_credential_paste = False
         self._copy_next_clipboard_item()
 
+    def _append_manual_clipboard_items(self, items: list[tuple[str, str]]) -> None:
+        if not self._manual_clipboard_enabled():
+            return
+        clean_items = [(label, str(value or "").strip()) for label, value in items if str(value or "").strip()]
+        if not clean_items:
+            return
+        should_copy_now = False
+        with self._clipboard_lock:
+            existing_values = {value for _, value in self._clipboard_sequence}
+            for label, value in clean_items:
+                if value not in existing_values:
+                    self._clipboard_sequence.append((label, value))
+                    existing_values.add(value)
+            should_copy_now = self._clipboard_index >= len(self._clipboard_sequence) - len(clean_items)
+        if should_copy_now:
+            self._copy_next_clipboard_item()
+
+    def _manual_signup_user_info(self) -> dict[str, str]:
+        if self._manual_user_info:
+            return dict(self._manual_user_info)
+        first_name, last_name = generate_random_name()
+        full_name = f"{first_name} {last_name}".strip()
+        age = random.randint(MIN_REGISTRATION_AGE, MAX_REGISTRATION_AGE)
+        self._manual_user_info = {
+            "name": full_name,
+            "age": str(age),
+        }
+        return dict(self._manual_user_info)
+
     def _copy_next_clipboard_item(self) -> None:
         with self._clipboard_lock:
             if self._clipboard_index >= len(self._clipboard_sequence):
@@ -268,8 +299,16 @@ class BrowserManualHandoffRegistrationEngine:
             self._last_clipboard_value = value
         if label == "邮箱":
             self._log("邮箱已复制到系统剪贴板；在浏览器中粘贴邮箱后，将自动把密码放入剪贴板。")
-        else:
+        elif label == "密码":
             self._log("密码已复制到系统剪贴板；请继续在浏览器中粘贴密码。")
+        elif label == "验证码":
+            self._log("验证码已复制到系统剪贴板；粘贴验证码后，将自动把姓名放入剪贴板。")
+        elif label == "姓名":
+            self._log("随机姓名已复制到系统剪贴板；粘贴姓名后，将自动把年龄放入剪贴板。")
+        elif label == "年龄":
+            self._log("随机合法年龄已复制到系统剪贴板。")
+        else:
+            self._log(f"{label} 已复制到系统剪贴板。")
 
     def _handle_page_paste(self, pasted_text: str = "") -> None:
         pasted = str(pasted_text or "").strip()
@@ -727,6 +766,17 @@ class BrowserManualHandoffRegistrationEngine:
             return
         self._used_verification_codes.add(code_text)
         self._log(f"人工接管验证码: {code_text}（请在浏览器中手动输入）")
+        user_info = self._manual_signup_user_info()
+        self._log(
+            f"人工接管资料: 姓名={user_info['name']}, 年龄={user_info['age']}"
+        )
+        self._append_manual_clipboard_items(
+            [
+                ("验证码", code_text),
+                ("姓名", user_info["name"]),
+                ("年龄", user_info["age"]),
+            ]
+        )
 
     def _exchange_callback(self, callback_url: str, oauth_start: OAuthStart) -> dict:
         return self.oauth_manager.handle_callback(

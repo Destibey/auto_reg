@@ -344,7 +344,7 @@ class EnhancedChatGPTClient:
         self,
         first_name: str,
         last_name: str,
-        birthdate: str
+        age: int
     ) -> Tuple[bool, str]:
         """
         增强版创建账号
@@ -358,7 +358,7 @@ class EnhancedChatGPTClient:
             fields = [
                 ("first_name", first_name),
                 ("last_name", last_name),
-                ("birthdate", birthdate),
+                ("age", str(age)),
             ]
             
             # 使用表单填写序列
@@ -369,7 +369,7 @@ class EnhancedChatGPTClient:
         
         # 提交账号创建
         success, result = self.base_client.create_account(
-            first_name, last_name, birthdate, return_state=True
+            first_name, last_name, age, return_state=True
         )
         
         if success:
@@ -390,7 +390,7 @@ class EnhancedChatGPTClient:
         password: str,
         first_name: str,
         last_name: str,
-        birthdate: str,
+        age: int,
         skymail_client
     ) -> Tuple[bool, str]:
         """
@@ -525,7 +525,7 @@ class EnhancedChatGPTClient:
                     return False, "填写信息阶段重复进入"
                 
                 success, next_state = self.create_account_enhanced(
-                    first_name, last_name, birthdate
+                    first_name, last_name, age
                 )
                 if not success:
                     return False, f"创建账号失败: {next_state}"

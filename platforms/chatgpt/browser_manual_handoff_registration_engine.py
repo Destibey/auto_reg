@@ -283,6 +283,59 @@ class BrowserManualHandoffRegistrationEngine:
         if has_next:
             self._copy_next_clipboard_item()
 
+    @staticmethod
+    def _page_has_input_value(page, value: str) -> bool:
+        target = str(value or "").strip()
+        if not target:
+            return False
+        script = """
+(target) => {
+  const nodes = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
+  return nodes.some(node => {
+    const value = 'value' in node ? node.value : '';
+    const text = node.textContent || '';
+    return String(value || text || '').includes(target);
+  });
+}
+"""
+        try:
+            return bool(page.evaluate(script, target))
+        except Exception:
+            return False
+
+    def _session_has_input_value(self, session: ManualBrowserSession, value: str) -> bool:
+        try:
+            if session.browser is not None:
+                for context in session.browser.contexts:
+                    for page in context.pages:
+                        if self._page_has_input_value(page, value):
+                            return True
+                return False
+        except Exception:
+            pass
+        try:
+            if session.context is not None:
+                for page in session.context.pages:
+                    if self._page_has_input_value(page, value):
+                        return True
+        except Exception:
+            pass
+        try:
+            return self._page_has_input_value(session.page, value)
+        except Exception:
+            return False
+
+    def _advance_clipboard_from_visible_inputs(self, session: ManualBrowserSession) -> None:
+        if not self._manual_clipboard_enabled():
+            return
+        with self._clipboard_lock:
+            expected = self._last_clipboard_value.strip()
+            has_next = self._clipboard_index < len(self._clipboard_sequence)
+        if not expected or not has_next:
+            return
+        if self._session_has_input_value(session, expected):
+            self._handle_page_paste(expected)
+
     def _install_clipboard_paste_watcher(self, session: ManualBrowserSession) -> None:
         if not self._manual_clipboard_enabled():
             return
@@ -703,6 +756,7 @@ class BrowserManualHandoffRegistrationEngine:
                 if not warned_existing_session:
                     self._log("检测到已有 ChatGPT 登录态，暂不判定为本次注册成功；请先退出旧账号后继续注册。", "warning")
                     warned_existing_session = True
+            self._advance_clipboard_from_visible_inputs(session)
             self._poll_email_code_for_user()
             time.sleep(1)
         return False, "等待人工完成注册超时"
@@ -725,8 +779,69 @@ class BrowserManualHandoffRegistrationEngine:
                 self._log("检测到 OAuth callback，开始交换 token...")
                 self._checkpoint()
                 return True, self._exchange_callback(callback_url, oauth_start)
+            self._advance_clipboard_from_visible_inputs(session)
             time.sleep(1)
         return False, "等待 OAuth callback 超时"
+
+    def acquire_token_for_existing_account(self, email: str, password: str) -> RegistrationResult:
+        result = RegistrationResult(success=False, logs=self.logs, source="browser_manual_handoff_token")
+        session = None
+        try:
+            self.email = str(email or "").strip()
+            self.password = str(password or "")
+            if not self.email:
+                raise RuntimeError("账号邮箱为空，无法执行 OAuth 取 token")
+            if not self.password:
+                raise RuntimeError("账号密码为空，无法执行 OAuth 取 token")
+
+            result.email = self.email
+            result.password = self.password
+            self._log("=" * 60)
+            self._log("ChatGPT 已有账号 browser_manual_handoff OAuth 取 token 启动")
+            self._log("=" * 60)
+            self._log(f"OAuth 账号邮箱: {self.email}")
+            self._prepare_manual_clipboard(self.email, self.password)
+
+            session = self._open_browser_session()
+            self._log(f"已打开隔离浏览器 provider={session.provider}")
+            self._install_clipboard_paste_watcher(session)
+            oauth_start = self.oauth_manager.start_oauth()
+            self._log("打开 OAuth 授权入口，等待你手动登录并完成授权...")
+            session.page.goto(oauth_start.auth_url, wait_until="domcontentloaded")
+
+            ok, payload = self._wait_for_token_callback(session, oauth_start)
+            if not ok:
+                result.error_message = str(payload)
+                self._log(result.error_message, "error")
+                return result
+
+            token_info = payload if isinstance(payload, dict) else {}
+            result.success = True
+            result.email = str(token_info.get("email") or self.email)
+            result.password = self.password
+            result.account_id = str(token_info.get("account_id") or "")
+            result.access_token = str(token_info.get("access_token") or "")
+            result.refresh_token = str(token_info.get("refresh_token") or "")
+            result.id_token = str(token_info.get("id_token") or "")
+            result.metadata = {
+                "chatgpt_registration_mode": "browser_manual_handoff",
+                "manual_handoff_stage": "token_callback",
+                "chatgpt_manual_enable_token_callback": True,
+            }
+            self._log("已有账号 OAuth token 提取完成")
+            return result
+        except TaskInterruption:
+            raise
+        except Exception as e:
+            result.error_message = str(e)
+            self._log(f"已有账号 OAuth 取 token 失败: {e}", "error")
+            return result
+        finally:
+            try:
+                if session is not None:
+                    session.close()
+            except Exception:
+                pass
 
     def run(self) -> RegistrationResult:
         result = RegistrationResult(success=False, logs=self.logs, source="browser_manual_handoff")

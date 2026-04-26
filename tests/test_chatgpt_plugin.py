@@ -97,6 +97,45 @@ class ChatGPTPluginTests(unittest.TestCase):
         self.assertEqual(kwargs.get("otp_sent_at"), 123.0)
         self.assertEqual(kwargs.get("exclude_codes"), {"654321"})
 
+    def test_manual_oauth_token_action_persists_token_payload(self):
+        platform = ChatGPTPlatform(config=RegisterConfig(extra={}))
+        account = mock.Mock(
+            email="demo@example.com",
+            password="pw-demo",
+            extra={},
+            token="",
+            user_id="",
+        )
+
+        fake_result = mock.Mock(
+            success=True,
+            access_token="at-demo",
+            refresh_token="rt-demo",
+            id_token="id-demo",
+            account_id="acct-demo",
+        )
+
+        with mock.patch(
+            "platforms.chatgpt.browser_manual_handoff_registration_engine.BrowserManualHandoffRegistrationEngine"
+        ) as Engine:
+            Engine.return_value.acquire_token_for_existing_account.return_value = fake_result
+            result = platform.execute_action("manual_oauth_token", account, {})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["access_token"], "at-demo")
+        self.assertEqual(result["account_extra_patch"]["refresh_token"], "rt-demo")
+        Engine.return_value.acquire_token_for_existing_account.assert_called_once_with(
+            "demo@example.com",
+            "pw-demo",
+        )
+
+    def test_actions_include_manual_oauth_token(self):
+        platform = ChatGPTPlatform(config=RegisterConfig(extra={}))
+
+        action_ids = [action["id"] for action in platform.get_platform_actions()]
+
+        self.assertIn("manual_oauth_token", action_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

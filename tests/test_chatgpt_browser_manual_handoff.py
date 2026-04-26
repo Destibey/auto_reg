@@ -25,6 +25,7 @@ class FakePage:
         self.exposed = {}
         self.init_scripts = []
         self.evaluated_scripts = []
+        self.input_values = []
 
     def goto(self, url, **_kwargs):
         self.goto_url = url
@@ -36,8 +37,12 @@ class FakePage:
     def add_init_script(self, script):
         self.init_scripts.append(script)
 
-    def evaluate(self, script):
+    def evaluate(self, script, *args):
         self.evaluated_scripts.append(script)
+        if args:
+            target = str(args[0])
+            return any(target in value for value in self.input_values)
+        return None
 
 
 class FakeBrowserSession:
@@ -146,6 +151,50 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(session.page.goto_urls, [DEFAULT_CHATGPT_MANUAL_SIGNUP_URL, "https://auth.example/authorize"])
         self.assertEqual(result.account_id, "acct-demo")
+        self.assertEqual(result.access_token, "at-demo")
+        self.assertEqual(result.refresh_token, "rt-demo")
+        self.assertEqual(result.metadata["manual_handoff_stage"], "token_callback")
+
+    def test_existing_account_token_acquisition_opens_oauth_directly(self):
+        session = FakeBrowserSession()
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_manual_handoff_timeout_seconds": 5,
+                "chatgpt_manual_clipboard_sequence": False,
+            },
+        )
+        engine.oauth_manager = mock.Mock(
+            start_oauth=mock.Mock(
+                return_value=OAuthStart(
+                    auth_url="https://auth.example/authorize",
+                    state="state-demo",
+                    code_verifier="verifier-demo",
+                    redirect_uri="http://localhost/callback",
+                )
+            )
+        )
+
+        with mock.patch.object(engine, "_open_browser_session", return_value=session):
+            with mock.patch.object(
+                engine,
+                "_wait_for_token_callback",
+                return_value=(
+                    True,
+                    {
+                        "email": "manual@example.com",
+                        "account_id": "acct-demo",
+                        "access_token": "at-demo",
+                        "refresh_token": "rt-demo",
+                        "id_token": "id-demo",
+                    },
+                ),
+            ):
+                result = engine.acquire_token_for_existing_account("manual@example.com", "pw-demo")
+
+        self.assertTrue(result.success)
+        self.assertEqual(session.page.goto_urls, ["https://auth.example/authorize"])
         self.assertEqual(result.access_token, "at-demo")
         self.assertEqual(result.refresh_token, "rt-demo")
         self.assertEqual(result.metadata["manual_handoff_stage"], "token_callback")
@@ -295,6 +344,19 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         with mock.patch.object(engine, "_set_system_clipboard", side_effect=lambda value: copied.append(value) or True):
             engine._prepare_manual_clipboard("manual@example.com", "pw-demo")
             engine._handle_page_paste("manual@example.com")
+
+        self.assertEqual(copied, ["manual@example.com", "pw-demo"])
+
+    def test_manual_clipboard_advances_when_email_appears_in_input(self):
+        session = FakeBrowserSession()
+        session.page.input_values = ["manual@example.com"]
+        engine = self._make_engine()
+        engine.extra_config["chatgpt_manual_clipboard_sequence"] = True
+        copied = []
+
+        with mock.patch.object(engine, "_set_system_clipboard", side_effect=lambda value: copied.append(value) or True):
+            engine._prepare_manual_clipboard("manual@example.com", "pw-demo")
+            engine._advance_clipboard_from_visible_inputs(session)
 
         self.assertEqual(copied, ["manual@example.com", "pw-demo"])
 

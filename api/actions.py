@@ -97,6 +97,10 @@ def _apply_action_result(
                 acc_model.token = data["access_token"]
             elif data.get("accessToken"):
                 acc_model.token = data["accessToken"]
+            if data.get("account_id"):
+                acc_model.user_id = data["account_id"]
+            elif data.get("user_id"):
+                acc_model.user_id = data["user_id"]
             from datetime import datetime, timezone
 
             acc_model.updated_at = datetime.now(timezone.utc)

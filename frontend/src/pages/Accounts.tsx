@@ -510,6 +510,7 @@ export default function Accounts() {
   const [registerLoading, setRegisterLoading] = useState(false)
   const [cpaSyncLoading, setCpaSyncLoading] = useState<'pending' | 'selected' | ''>('')
   const [statusSyncLoading, setStatusSyncLoading] = useState<'probe_selected' | 'probe_all' | 'remote_selected' | 'remote_all' | ''>('')
+  const [manualOAuthLoading, setManualOAuthLoading] = useState(false)
 
   useEffect(() => {
     if (platform) setCurrentPlatform(platform)
@@ -912,6 +913,45 @@ export default function Accounts() {
     }
   }
 
+  const handleManualOAuthTokenBatch = async () => {
+    if (currentPlatform !== 'chatgpt') return
+    const accountIds = Array.from(selectedRowKeys)
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0)
+
+    if (accountIds.length === 0) {
+      message.warning('请先选择已加入 Team 的账号')
+      return
+    }
+
+    const toastKey = 'manual-oauth-token-batch'
+    setManualOAuthLoading(true)
+    message.loading({ content: `手动 OAuth 取 token 进行中：${accountIds.length} 个账号会按顺序打开浏览器...`, key: toastKey, duration: 0 })
+    try {
+      const result = await apiFetch('/actions/chatgpt/manual_oauth_token/batch', {
+        method: 'POST',
+        body: JSON.stringify({ account_ids: accountIds, params: {} }),
+      })
+
+      if (!result.total) {
+        message.info({ content: '没有可处理的账号', key: toastKey })
+      } else if (!result.failed) {
+        message.success({ content: `手动 OAuth 取 token 完成：成功 ${result.success} / ${result.total}`, key: toastKey })
+      } else if (!result.success) {
+        message.error({ content: `手动 OAuth 取 token 失败：成功 ${result.success} / ${result.total}`, key: toastKey })
+      } else {
+        message.warning({ content: `手动 OAuth 取 token 部分完成：成功 ${result.success} / ${result.total}`, key: toastKey })
+      }
+
+      showBatchActionResult('手动 OAuth 取 token 结果', result)
+      await load()
+    } catch (e: any) {
+      message.error({ content: `手动 OAuth 取 token 失败: ${e.message}`, key: toastKey })
+    } finally {
+      setManualOAuthLoading(false)
+    }
+  }
+
   const getStatusSyncScope = (): 'selected' | 'all' => (selectedRowKeys.length > 0 ? 'selected' : 'all')
 
   const getBackfillScope = (): 'selected' | 'pending' => (selectedRowKeys.length > 0 ? 'selected' : 'pending')
@@ -1204,6 +1244,21 @@ export default function Accounts() {
                 disabled={getBackfillScope() === 'selected' ? selectedRowKeys.length === 0 : total === 0}
               >
                 {backfillButtonLabel()}
+              </Button>
+            </Popconfirm>
+          )}
+          {currentPlatform === 'chatgpt' && (
+            <Popconfirm
+              title={`确认对所选 ${selectedRowKeys.length} 个已加入 Team 的账号逐个打开浏览器取 token？`}
+              onConfirm={handleManualOAuthTokenBatch}
+              disabled={selectedRowKeys.length === 0}
+            >
+              <Button
+                icon={<SyncOutlined />}
+                loading={manualOAuthLoading}
+                disabled={selectedRowKeys.length === 0}
+              >
+                手动取Token
               </Button>
             </Popconfirm>
           )}

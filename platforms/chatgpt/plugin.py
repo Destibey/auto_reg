@@ -187,6 +187,7 @@ class ChatGPTPlatform(BasePlatform):
             {"id": "probe_local_status", "label": "探测本地状态", "params": []},
             {"id": "sync_cliproxyapi_status", "label": "同步 CLIProxyAPI 状态", "params": []},
             {"id": "refresh_token", "label": "刷新 Token", "params": []},
+            {"id": "manual_oauth_token", "label": "手动 OAuth 取 Token", "params": []},
             {
                 "id": "payment_link",
                 "label": "生成支付链接",
@@ -311,6 +312,50 @@ class ChatGPTPlatform(BasePlatform):
                     },
                 }
             return {"ok": False, "error": result.error_message}
+
+        if action_id == "manual_oauth_token":
+            from platforms.chatgpt.browser_manual_handoff_registration_engine import (
+                BrowserManualHandoffRegistrationEngine,
+            )
+
+            class ExistingAccountEmailService:
+                def create_email(self, config=None):
+                    return {"email": account.email, "service_id": account.email, "token": ""}
+
+                def get_verification_code(self, **_kwargs):
+                    return ""
+
+            engine = BrowserManualHandoffRegistrationEngine(
+                email_service=ExistingAccountEmailService(),
+                proxy_url=proxy,
+                callback_logger=lambda msg: print(f"  [Manual OAuth] {msg}"),
+                extra_config={
+                    **(self.config.extra or {}),
+                    "chatgpt_manual_enable_token_callback": True,
+                },
+            )
+            result = engine.acquire_token_for_existing_account(account.email, account.password)
+            if not result.success:
+                return {"ok": False, "error": result.error_message or "OAuth 取 token 失败"}
+
+            data = {
+                "message": "OAuth token 提取完成",
+                "access_token": result.access_token,
+                "refresh_token": result.refresh_token,
+                "id_token": result.id_token,
+                "account_id": result.account_id,
+            }
+            return {
+                "ok": True,
+                "data": data,
+                "account_extra_patch": {
+                    **data,
+                    "chatgpt_registration_mode": "browser_manual_handoff",
+                    "manual_handoff_stage": "token_callback",
+                    "chatgpt_manual_enable_token_callback": True,
+                    "chatgpt_has_refresh_token_solution": bool(result.refresh_token),
+                },
+            }
 
         if action_id == "payment_link":
             from platforms.chatgpt.payment import generate_plus_link, generate_team_link

@@ -79,6 +79,37 @@ class FakeBrowserSession:
         self.closed = True
 
 
+class FakeReadableLocator:
+    def inner_text(self, **_kwargs):
+        return "Create account"
+
+
+class FakeReadablePage(FakePage):
+    url = "https://auth.openai.com/create-account"
+
+    def is_closed(self):
+        return False
+
+    def title(self):
+        return "ChatGPT signup"
+
+    def locator(self, _selector):
+        return FakeReadableLocator()
+
+
+class FakeBrowserContext:
+    def __init__(self, pages):
+        self.pages = pages
+
+
+class FakeDisconnectedBrowser:
+    def __init__(self, pages):
+        self.contexts = [FakeBrowserContext(pages)]
+
+    def is_connected(self):
+        return False
+
+
 class FakeTaskControl:
     def __init__(self, exc):
         self.exc = exc
@@ -601,6 +632,16 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("浏览器已关闭", result.error_message)
+
+    def test_disconnected_browser_ignores_stale_page_state(self):
+        page = FakeReadablePage()
+        session = FakeBrowserSession(page=page)
+        session.browser = FakeDisconnectedBrowser([page])
+        engine = self._make_engine()
+
+        states = engine._collect_page_states(session)
+
+        self.assertEqual(states, [])
 
     def test_stop_request_interrupts_manual_wait_loop(self):
         control = FakeTaskControl(StopTaskRequested())

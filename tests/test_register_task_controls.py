@@ -1,6 +1,9 @@
 import unittest
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
+import main
 from api.tasks import RegisterTaskRequest, _auto_upload_integrations, _create_task_record, _run_register, _task_store
 from core.base_mailbox import BaseMailbox, MailboxAccount
 from core.base_platform import Account, BasePlatform
@@ -148,6 +151,38 @@ class RegisterTaskControlFlowTests(unittest.TestCase):
         log.assert_called_once()
         self.assertIn("signup-only", log.call_args.args[1])
         self.assertIn("账号管理页", log.call_args.args[1])
+
+    def test_stop_task_api_requests_cooperative_stop(self):
+        task_id = "task-control-api-stop"
+        _create_task_record(task_id, self._build_request(), "manual", None)
+        client = TestClient(main.app)
+
+        with patch("core.config_store.config_store.get", return_value=""):
+            response = client.post(f"/api/tasks/{task_id}/stop")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["control"]["stop_requested"])
+        snapshot = _task_store.snapshot(task_id)
+        self.assertTrue(snapshot["control"]["stop_requested"])
+        self.assertTrue(any("停止任务请求" in line for line in snapshot["logs"]))
+
+    def test_skip_current_api_targets_active_attempt(self):
+        task_id = "task-control-api-skip"
+        _create_task_record(task_id, self._build_request(), "manual", None)
+        control = _task_store.control_for(task_id)
+        attempt_id = control.start_attempt()
+        client = TestClient(main.app)
+
+        try:
+            with patch("core.config_store.config_store.get", return_value=""):
+                response = client.post(f"/api/tasks/{task_id}/skip-current")
+        finally:
+            control.finish_attempt(attempt_id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["control"]["targeted_skip_attempts"], 1)
+        snapshot = _task_store.snapshot(task_id)
+        self.assertTrue(any("跳过当前账号请求" in line for line in snapshot["logs"]))
 
 
 if __name__ == "__main__":

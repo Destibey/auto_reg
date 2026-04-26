@@ -369,7 +369,22 @@ class BrowserManualHandoffRegistrationEngine:
         except Exception:
             return False
 
+    @staticmethod
+    def _browser_session_disconnected(session: ManualBrowserSession) -> bool:
+        browser = getattr(session, "browser", None)
+        if browser is None:
+            return False
+        is_connected = getattr(browser, "is_connected", None)
+        if not callable(is_connected):
+            return False
+        try:
+            return not bool(is_connected())
+        except Exception:
+            return True
+
     def _iter_session_pages(self, session: ManualBrowserSession) -> list[object]:
+        if self._browser_session_disconnected(session):
+            return []
         pages = []
         seen = set()
 
@@ -694,6 +709,8 @@ class BrowserManualHandoffRegistrationEngine:
         return ManualPageState(url=url, title=title, body_text=body_text)
 
     def _collect_page_states(self, session: ManualBrowserSession) -> list[ManualPageState]:
+        if self._browser_session_disconnected(session):
+            return []
         states: list[ManualPageState] = []
         try:
             if session.browser is not None:

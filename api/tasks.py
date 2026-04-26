@@ -425,6 +425,24 @@ def create_register_task(
     return {"task_id": task_id}
 
 
+@router.post("/{task_id}/stop")
+def stop_register_task(task_id: str):
+    if not _task_store.exists(task_id):
+        raise HTTPException(404, "任务不存在")
+    control = _task_store.request_stop(task_id)
+    _log(task_id, "已收到停止任务请求，正在协作式停止当前注册线程...")
+    return {"task_id": task_id, "control": control}
+
+
+@router.post("/{task_id}/skip-current")
+def skip_current_register_attempt(task_id: str):
+    if not _task_store.exists(task_id):
+        raise HTTPException(404, "任务不存在")
+    control = _task_store.request_skip_current(task_id)
+    _log(task_id, "已收到跳过当前账号请求，正在中断当前注册尝试...")
+    return {"task_id": task_id, "control": control}
+
+
 @router.get("/logs")
 def get_logs(platform: str = None, page: int = 1, page_size: int = 50):
     with Session(engine) as s:

@@ -288,6 +288,9 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertIn("clicked_required_consent", script)
         self.assertIn("const hasFreshFill", script)
         self.assertIn("&& !hasFreshFill", script)
+        self.assertIn("socialProvider", script)
+        self.assertIn("formContainsFilledControl", script)
+        self.assertIn("submitForm: true", script)
 
     def test_assisted_signup_can_click_signup_entry_before_form_fields(self):
         page = FakeAssistedPage({"actions": ["clicked_signup_entry"]})

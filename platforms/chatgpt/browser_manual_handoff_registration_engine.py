@@ -1172,7 +1172,7 @@ class BrowserManualHandoffRegistrationEngine:
     if (element.matches && element.matches('input[type="checkbox"]')) return Boolean(element.checked);
     return lower(element.getAttribute('aria-checked')) === 'true';
   };
-  const clickElement = element => {
+  const clickElement = (element, options = {}) => {
     if (!element) return false;
     try {
       if (element.scrollIntoView) element.scrollIntoView({ block: 'center', inline: 'center' });
@@ -1180,12 +1180,45 @@ class BrowserManualHandoffRegistrationEngine:
     try {
       if (element.focus) element.focus();
     } catch (_err) {}
+    const rect = element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+    const point = rect ? {
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+    } : {};
+    const dispatchMouse = type => {
+      try {
+        const eventClass = window.PointerEvent && type.startsWith('pointer') ? PointerEvent : MouseEvent;
+        element.dispatchEvent(new eventClass(type, {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          button: 0,
+          buttons: type.endsWith('down') ? 1 : 0,
+          ...point,
+        }));
+      } catch (_err) {}
+    };
     try {
+      ['pointerover', 'mouseover', 'pointermove', 'mousemove', 'pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(dispatchMouse);
       element.click();
+      if (options.submitForm) {
+        const form = element.form || (element.closest ? element.closest('form') : null);
+        if (form) {
+          if (form.requestSubmit) {
+            form.requestSubmit(element.matches && element.matches('button, input[type="submit"]') ? element : undefined);
+          } else {
+            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          }
+        }
+      }
       return true;
     } catch (_err) {
       try {
         element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        if (options.submitForm) {
+          const form = element.form || (element.closest ? element.closest('form') : null);
+          if (form && form.requestSubmit) form.requestSubmit();
+        }
         return true;
       } catch (_fallbackErr) {
         return false;
@@ -1231,18 +1264,36 @@ class BrowserManualHandoffRegistrationEngine:
     && !result.checkboxBlocked
     && !result.challengeDetected;
   if (canClick) {
-    const button = collect('button, [role="button"], input[type="submit"], input[type="button"]').find(element => {
+    const socialProvider = text => {
+      return /(continue with|sign in with|log in with|continue using|sign up with).*(google|apple|microsoft|github|sso|saml)|google|apple|microsoft|github|single sign-on|sso|saml/.test(text);
+    };
+    const formContainsFilledControl = element => {
+      const form = element.form || (element.closest ? element.closest('form') : null);
+      if (!form) return false;
+      return controls.some(control => {
+        if (!form.contains(control)) return false;
+        return Boolean(currentValue(control));
+      });
+    };
+    const buttonText = element => lower([
+      element.innerText,
+      element.textContent,
+      element.getAttribute('value'),
+      element.getAttribute('aria-label'),
+      element.getAttribute('name'),
+      element.getAttribute('title'),
+    ].filter(Boolean).join(' '));
+    const candidates = collect('button, [role="button"], input[type="submit"], input[type="button"]').filter(element => {
       if (!visible(element)) return false;
-      const text = lower([
-        element.innerText,
-        element.getAttribute('value'),
-        element.getAttribute('aria-label'),
-        element.getAttribute('name'),
-      ].filter(Boolean).join(' '));
-      return /(continue|next|submit|verify|sign up|create account|继续|下一步|提交|验证|注册)/.test(text);
+      const text = buttonText(element);
+      if (socialProvider(text)) return false;
+      const type = lower(element.getAttribute('type'));
+      return /(continue|next|submit|verify|finish creating account|sign up|create account|继续|下一步|提交|验证|注册)/.test(text)
+        || (type === 'submit' && formContainsFilledControl(element));
     });
+    const button = candidates.find(formContainsFilledControl) || candidates[0];
     if (button) {
-      if (clickElement(button)) {
+      if (clickElement(button, { submitForm: true })) {
         result.actions.push('clicked_continue');
       }
     }

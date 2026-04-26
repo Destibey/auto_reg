@@ -13,10 +13,10 @@ import requests
 
 from core.task_runtime import TaskInterruption
 
-from .constants import OAUTH_REDIRECT_URI
-from .oauth import OAuthManager, OAuthStart
 from .refresh_token_registration_engine import RegistrationResult
 from .utils import generate_random_password
+
+DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://chatgpt.com/"
 
 
 @dataclass
@@ -70,7 +70,7 @@ class ManualPageState:
 
 
 class BrowserManualHandoffRegistrationEngine:
-    """Open a real headed browser and wait for the user to finish OAuth."""
+    """Open a real headed browser and wait for the user to finish signup."""
 
     def __init__(
         self,
@@ -93,7 +93,6 @@ class BrowserManualHandoffRegistrationEngine:
         self.extra_config = dict(extra_config or {})
         self.task_control = task_control
         self.task_attempt_token = task_attempt_token
-        self.oauth_manager = OAuthManager(proxy_url=proxy_url)
 
         self.email: Optional[str] = None
         self.password: Optional[str] = None
@@ -147,6 +146,12 @@ class BrowserManualHandoffRegistrationEngine:
         except Exception:
             return False
         return True
+
+    def _manual_signup_url(self) -> str:
+        return str(
+            self.extra_config.get("chatgpt_manual_signup_url")
+            or DEFAULT_CHATGPT_MANUAL_SIGNUP_URL
+        ).strip()
 
     def _checkpoint(self) -> None:
         if self.task_control is None:
@@ -390,18 +395,6 @@ class BrowserManualHandoffRegistrationEngine:
         return [state.url for state in self._collect_page_states(session) if state.url]
 
     @staticmethod
-    def _find_callback_url(urls: list[str], oauth_start: OAuthStart) -> str:
-        redirect_uri = (oauth_start.redirect_uri or OAUTH_REDIRECT_URI).lower()
-        expected_state = oauth_start.state
-        for url in urls:
-            lowered = (url or "").lower()
-            if not lowered.startswith(redirect_uri):
-                continue
-            if "code=" in lowered and f"state={expected_state}".lower() in lowered:
-                return url
-        return ""
-
-    @staticmethod
     def _requires_phone(states: list[ManualPageState] | list[str]) -> bool:
         needles = (
             "add-phone",
@@ -420,6 +413,41 @@ class BrowserManualHandoffRegistrationEngine:
                 haystack = " ".join((state.url, state.title, state.body_text))
             lowered = haystack.lower()
             if any(needle in lowered for needle in needles):
+                return True
+        return False
+
+    @staticmethod
+    def _looks_like_chatgpt_app(states: list[ManualPageState]) -> bool:
+        positive_markers = (
+            "new chat",
+            "message chatgpt",
+            "ask anything",
+            "what can i help",
+            "explore gpts",
+            "upgrade plan",
+            "新聊天",
+            "向 chatgpt 发送消息",
+            "有什么可以帮",
+        )
+        signed_out_markers = (
+            "log in",
+            "sign up",
+            "sign in",
+            "create account",
+            "登录",
+            "注册",
+            "创建账号",
+        )
+        for state in states:
+            lowered_url = (state.url or "").lower()
+            if "chatgpt.com" not in lowered_url and "chat.openai.com" not in lowered_url:
+                continue
+            if "/auth" in lowered_url:
+                continue
+            text = " ".join((state.title, state.body_text)).lower()
+            if any(marker in text for marker in signed_out_markers):
+                continue
+            if any(marker in text for marker in positive_markers):
                 return True
         return False
 
@@ -449,18 +477,9 @@ class BrowserManualHandoffRegistrationEngine:
         self._used_verification_codes.add(code_text)
         self._log(f"人工接管验证码: {code_text}（请在浏览器中手动输入）")
 
-    def _exchange_callback(self, callback_url: str, oauth_start: OAuthStart) -> dict:
-        return self.oauth_manager.handle_callback(
-            callback_url,
-            expected_state=oauth_start.state,
-            code_verifier=oauth_start.code_verifier,
-        )
-
-    def _wait_for_manual_completion(
-        self, session: ManualBrowserSession, oauth_start: OAuthStart
-    ) -> tuple[bool, dict | str]:
+    def _wait_for_manual_completion(self, session: ManualBrowserSession) -> tuple[bool, str]:
         timeout = self._int_config("chatgpt_manual_handoff_timeout_seconds", 900)
-        self._log(f"等待你在浏览器中手动完成注册/OAuth 授权，最多 {timeout}s ...")
+        self._log(f"等待你在普通 ChatGPT 页面手动完成注册，最多 {timeout}s ...")
         deadline = time.time() + timeout
         while time.time() < deadline:
             self._checkpoint()
@@ -469,12 +488,8 @@ class BrowserManualHandoffRegistrationEngine:
                 return False, "人工接管浏览器已关闭或不可访问，注册流程已停止。"
             if self._requires_phone(states):
                 return False, "OpenAI 要求绑定手机号；人工接管模式已按策略停止。"
-            urls = [state.url for state in states if state.url]
-            callback_url = self._find_callback_url(urls, oauth_start)
-            if callback_url:
-                self._log("检测到 OAuth callback，开始交换 token...")
-                self._checkpoint()
-                return True, self._exchange_callback(callback_url, oauth_start)
+            if self._looks_like_chatgpt_app(states):
+                return True, "检测到普通 ChatGPT 注册/登录已进入应用。已按 signup-only 策略停止，不自动进入 OAuth 取 token。"
             self._poll_email_code_for_user()
             time.sleep(1)
         return False, "等待人工完成注册超时"
@@ -496,31 +511,27 @@ class BrowserManualHandoffRegistrationEngine:
             self._log(f"人工接管邮箱: {email}")
             self._log(f"人工接管密码: {password}")
 
-            oauth_start = self.oauth_manager.start_oauth()
-            self._checkpoint()
             session = self._open_browser_session()
             self._log(f"已打开隔离浏览器 provider={session.provider}")
-            session.page.goto(oauth_start.auth_url, wait_until="domcontentloaded")
+            signup_url = self._manual_signup_url()
+            self._log(f"打开普通 ChatGPT 注册入口: {signup_url}")
+            session.page.goto(signup_url, wait_until="domcontentloaded")
 
-            ok, payload = self._wait_for_manual_completion(session, oauth_start)
+            ok, payload = self._wait_for_manual_completion(session)
             if not ok:
                 result.error_message = str(payload)
                 self._log(result.error_message, "error")
                 return result
 
-            token_info = payload if isinstance(payload, dict) else {}
             result.success = True
-            result.email = str(token_info.get("email") or email)
+            result.email = email
             result.password = password
-            result.account_id = str(token_info.get("account_id") or "")
-            result.access_token = str(token_info.get("access_token") or "")
-            result.refresh_token = str(token_info.get("refresh_token") or "")
-            result.id_token = str(token_info.get("id_token") or "")
             result.metadata = {
-                "expired": token_info.get("expired", ""),
                 "chatgpt_registration_mode": "browser_manual_handoff",
+                "manual_handoff_stage": "signup_only",
             }
-            self._log("browser_manual_handoff token 提取完成")
+            self._log(str(payload))
+            self._log("browser_manual_handoff 普通注册完成，仅保存邮箱和密码")
             return result
         except TaskInterruption:
             raise

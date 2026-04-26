@@ -294,7 +294,7 @@ const TAB_ITEMS = [
       },
       {
         title: 'Camoufox 浏览器人工接管',
-        desc: 'ChatGPT browser_manual_handoff 模式使用；只启动本地 Camoufox 隔离有头浏览器，等待你手动完成 OAuth callback。',
+        desc: 'ChatGPT browser_manual_handoff 模式使用；只启动本地 Camoufox 打开普通 ChatGPT 入口，等待你手动完成注册。',
         fields: [
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },

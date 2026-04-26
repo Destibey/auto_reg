@@ -2,9 +2,9 @@ import unittest
 from unittest import mock
 
 from core.task_runtime import SkipCurrentAttemptRequested, StopTaskRequested
-from platforms.chatgpt.oauth import OAuthStart
 from platforms.chatgpt.browser_manual_handoff_registration_engine import (
     BrowserManualHandoffRegistrationEngine,
+    DEFAULT_CHATGPT_MANUAL_SIGNUP_URL,
     ManualPageState,
 )
 
@@ -56,42 +56,28 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             extra_config={"chatgpt_manual_handoff_timeout_seconds": 5},
         )
         engine.password = "pw-demo"
-        engine.oauth_manager = mock.Mock()
-        engine.oauth_manager.start_oauth.return_value = OAuthStart(
-            auth_url="https://auth.openai.com/oauth/authorize?state=state-demo",
-            state="state-demo",
-            code_verifier="verifier-demo",
-            redirect_uri="http://localhost:1455/auth/callback",
-        )
         return engine
 
-    def test_exchanges_callback_url_for_tokens(self):
+    def test_signup_only_saves_email_and_password_without_token_exchange(self):
         session = FakeBrowserSession()
         engine = self._make_engine()
-        callback_url = "http://localhost:1455/auth/callback?code=code-demo&state=state-demo"
-        engine.oauth_manager.handle_callback.return_value = {
-            "email": "manual@example.com",
-            "account_id": "acct-demo",
-            "access_token": "at-demo",
-            "refresh_token": "rt-demo",
-            "id_token": "id-demo",
-        }
 
         with mock.patch.object(engine, "_open_browser_session", return_value=session):
             with mock.patch.object(
                 engine,
                 "_collect_page_states",
-                return_value=[ManualPageState(url=callback_url)],
+                return_value=[ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
             ):
                 result = engine.run()
 
         self.assertTrue(result.success)
         self.assertEqual(result.email, "manual@example.com")
         self.assertEqual(result.password, "pw-demo")
-        self.assertEqual(result.account_id, "acct-demo")
-        self.assertEqual(result.access_token, "at-demo")
-        self.assertEqual(result.refresh_token, "rt-demo")
-        self.assertEqual(session.page.goto_url, engine.oauth_manager.start_oauth.return_value.auth_url)
+        self.assertEqual(result.account_id, "")
+        self.assertEqual(result.access_token, "")
+        self.assertEqual(result.refresh_token, "")
+        self.assertEqual(result.metadata["manual_handoff_stage"], "signup_only")
+        self.assertEqual(session.page.goto_url, DEFAULT_CHATGPT_MANUAL_SIGNUP_URL)
         session.close()
         self.assertTrue(session.closed)
 
@@ -109,7 +95,6 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("手机号", result.error_message)
-        engine.oauth_manager.handle_callback.assert_not_called()
 
     def test_default_manual_browser_provider_is_camoufox(self):
         engine = self._make_engine()
@@ -174,6 +159,30 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             )
         )
 
+    def test_detects_normal_chatgpt_app_then_completes_signup_only(self):
+        session = FakeBrowserSession()
+        engine = self._make_engine()
+
+        with mock.patch.object(
+            engine,
+            "_collect_page_states",
+            return_value=[ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
+        ):
+            ok, payload = engine._wait_for_manual_completion(session)
+
+        self.assertTrue(ok)
+        self.assertIn("signup-only", payload)
+        self.assertEqual(session.page.goto_url, "")
+
+    def test_logged_out_chatgpt_home_does_not_open_oauth(self):
+        engine = self._make_engine()
+
+        self.assertFalse(
+            engine._looks_like_chatgpt_app(
+                [ManualPageState(url="https://chatgpt.com/", body_text="Log in Sign up")]
+            )
+        )
+
     def test_closed_browser_fails_manual_wait(self):
         session = FakeBrowserSession()
         engine = self._make_engine()
@@ -192,10 +201,7 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         engine.task_attempt_token = 7
 
         with self.assertRaises(StopTaskRequested):
-            engine._wait_for_manual_completion(
-                FakeBrowserSession(),
-                engine.oauth_manager.start_oauth.return_value,
-            )
+            engine._wait_for_manual_completion(FakeBrowserSession())
 
         self.assertEqual(control.attempt_ids, [7])
 
@@ -206,10 +212,7 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         engine.task_attempt_token = 8
 
         with self.assertRaises(SkipCurrentAttemptRequested):
-            engine._wait_for_manual_completion(
-                FakeBrowserSession(),
-                engine.oauth_manager.start_oauth.return_value,
-            )
+            engine._wait_for_manual_completion(FakeBrowserSession())
 
         self.assertEqual(control.attempt_ids, [8])
 

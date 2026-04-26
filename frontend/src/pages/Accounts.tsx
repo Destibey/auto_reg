@@ -1259,7 +1259,7 @@ export default function Accounts() {
               <InputNumber min={0} precision={1} step={0.5} style={{ width: '100%' }} placeholder="0 = 不延迟" />
             </Form.Item>
             {currentPlatform === 'chatgpt' && (
-              <Form.Item label="ChatGPT Token 方案">
+              <Form.Item label="ChatGPT 注册模式">
                 <ChatGPTRegistrationModeSwitch
                   mode={chatgptRegistrationMode}
                   onChange={setChatgptRegistrationMode}

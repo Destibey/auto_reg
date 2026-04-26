@@ -93,6 +93,15 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertIn("手机号", result.error_message)
         engine.oauth_manager.handle_callback.assert_not_called()
 
+    def test_default_manual_browser_provider_is_camoufox(self):
+        engine = self._make_engine()
+
+        with mock.patch.object(engine, "_open_camoufox_session", return_value=FakeBrowserSession()) as mocked:
+            session = engine._open_browser_session()
+
+        self.assertEqual(session.provider, "fake")
+        mocked.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

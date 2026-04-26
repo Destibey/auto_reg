@@ -222,12 +222,43 @@ class BrowserManualHandoffRegistrationEngine:
             keep_open=self._bool_config("chatgpt_manual_browser_keep_open", False),
         )
 
+    def _open_camoufox_session(self) -> ManualBrowserSession:
+        from camoufox.sync_api import Camoufox
+
+        profile_dir = str(
+            self.extra_config.get("chatgpt_manual_browser_profile_dir")
+            or Path.cwd() / ".manual_profiles" / "chatgpt_camoufox"
+        )
+        Path(profile_dir).mkdir(parents=True, exist_ok=True)
+        launch_kwargs = {
+            "headless": False,
+            "persistent_context": True,
+            "user_data_dir": profile_dir,
+            "window": (1440, 1000),
+            "enable_cache": True,
+        }
+        if self.proxy_url:
+            launch_kwargs["proxy"] = {"server": self.proxy_url}
+        self._log("启动本地 Camoufox 隔离浏览器...")
+        camoufox = Camoufox(**launch_kwargs)
+        context = camoufox.__enter__()
+        page = context.new_page()
+        return ManualBrowserSession(
+            provider="camoufox",
+            page=page,
+            context=context,
+            playwright=camoufox,
+            keep_open=self._bool_config("chatgpt_manual_browser_keep_open", False),
+        )
+
     def _open_browser_session(self) -> ManualBrowserSession:
         provider = str(
             self.extra_config.get("chatgpt_manual_browser_provider")
             or self.extra_config.get("manual_browser_provider")
-            or "adspower"
+            or "camoufox"
         ).strip().lower()
+        if provider in {"camoufox", "free", "free_fingerprint"}:
+            return self._open_camoufox_session()
         if provider in {"adspower", "ads", "sunbrowser", "sun_browser"}:
             return self._open_adspower_session()
         if provider in {"playwright", "chromium", "local"}:

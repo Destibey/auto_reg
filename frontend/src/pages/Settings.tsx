@@ -55,6 +55,7 @@ const SELECT_FIELDS: Record<string, { label: string; value: string }[]> = {
     { label: 'RT（Refresh Token）', value: 'rt' },
   ],
   chatgpt_manual_browser_provider: [
+    { label: 'Camoufox（免费本地）', value: 'camoufox' },
     { label: 'AdsPower / SunBrowser', value: 'adspower' },
     { label: '本地隔离 Chromium', value: 'playwright' },
   ],
@@ -292,7 +293,7 @@ const TAB_ITEMS = [
       },
       {
         title: '浏览器人工接管',
-        desc: 'ChatGPT browser_manual_handoff 模式使用；AdsPower 需先启动 Local API 并配置 profile',
+        desc: 'ChatGPT browser_manual_handoff 模式使用；默认免费 Camoufox，AdsPower 可选',
         fields: [
           { key: 'chatgpt_manual_browser_provider', label: '浏览器后端', type: 'select' },
           { key: 'chatgpt_adspower_api_url', label: 'AdsPower Local API', placeholder: 'http://local.adspower.net:50325' },
@@ -301,7 +302,7 @@ const TAB_ITEMS = [
           { key: 'chatgpt_adspower_api_key', label: 'AdsPower API Key', secret: true, placeholder: '启用安全校验时填写' },
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
-          { key: 'chatgpt_manual_browser_profile_dir', label: '本地 Chromium Profile 目录', placeholder: '.manual_profiles/chatgpt' },
+          { key: 'chatgpt_manual_browser_profile_dir', label: '本地浏览器 Profile 目录', placeholder: '.manual_profiles/chatgpt_camoufox' },
           { key: 'chatgpt_manual_browser_keep_open', label: '任务结束保留浏览器', type: 'boolean' },
         ],
       },
@@ -1178,7 +1179,7 @@ export default function Settings() {
         data.gmail_imap_mailbox = 'INBOX'
       }
       if (!data.chatgpt_manual_browser_provider) {
-        data.chatgpt_manual_browser_provider = 'adspower'
+        data.chatgpt_manual_browser_provider = 'camoufox'
       }
       if (!data.chatgpt_adspower_api_url) {
         data.chatgpt_adspower_api_url = 'http://local.adspower.net:50325'

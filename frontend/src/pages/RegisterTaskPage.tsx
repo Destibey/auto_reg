@@ -91,7 +91,7 @@ export default function RegisterTaskPage() {
         smstome_otp_timeout_seconds: cfg.smstome_otp_timeout_seconds || '',
         smstome_poll_interval_seconds: cfg.smstome_poll_interval_seconds || '',
         smstome_sync_max_pages_per_country: cfg.smstome_sync_max_pages_per_country || '',
-        chatgpt_manual_browser_provider: cfg.chatgpt_manual_browser_provider || 'adspower',
+        chatgpt_manual_browser_provider: cfg.chatgpt_manual_browser_provider || 'camoufox',
         chatgpt_adspower_api_url: cfg.chatgpt_adspower_api_url || 'http://local.adspower.net:50325',
         chatgpt_adspower_profile_id: cfg.chatgpt_adspower_profile_id || '',
         chatgpt_adspower_serial_number: cfg.chatgpt_adspower_serial_number || '',
@@ -271,7 +271,7 @@ export default function RegisterTaskPage() {
         maliapi_base_url: 'https://maliapi.215.im/v1',
         maliapi_auto_domain_strategy: 'balanced',
         solver_url: 'http://localhost:8889',
-        chatgpt_manual_browser_provider: 'adspower',
+        chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_adspower_api_url: 'http://local.adspower.net:50325',
         chatgpt_manual_handoff_timeout_seconds: '900',
         chatgpt_manual_email_poll_interval_seconds: '10',
@@ -352,11 +352,12 @@ export default function RegisterTaskPage() {
           chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF && (
             <Card title="ChatGPT 浏览器人工接管" style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                AdsPower 模式会通过 Local API 启动 SunBrowser profile，并用 Playwright 连接返回的 CDP WebSocket。
+                默认使用免费本地 Camoufox；AdsPower/SunBrowser 仍可作为可选商业 profile 后端。
               </Text>
               <Form.Item name="chatgpt_manual_browser_provider" label="浏览器后端">
                 <Select
                   options={[
+                    { value: 'camoufox', label: 'Camoufox（免费本地）' },
                     { value: 'adspower', label: 'AdsPower / SunBrowser' },
                     { value: 'playwright', label: '本地隔离 Chromium' },
                   ]}

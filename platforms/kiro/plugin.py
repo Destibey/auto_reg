@@ -19,8 +19,9 @@ class KiroPlatform(BasePlatform):
 
         proxy = self.config.proxy
         laoudo_account_id = self.config.extra.get("laoudo_account_id", "")
+        headless = self.config.executor_type != "headed"
 
-        reg = KiroRegister(proxy=proxy, tag="KIRO")
+        reg = KiroRegister(proxy=proxy, tag="KIRO", headless=headless)
         log_fn = getattr(self, '_log_fn', print)
         reg.log = lambda msg: log_fn(msg)
 
@@ -122,7 +123,11 @@ class KiroPlatform(BasePlatform):
                 return {"ok": False, "error": "当前账号缺少 accessToken，无法切换到桌面应用"}
             if not refresh_token or not client_id or not client_secret:
                 if account.email and account.password:
-                    reg = KiroRegister(proxy=self.config.proxy, tag="KIRO-SWITCH")
+                    reg = KiroRegister(
+                        proxy=self.config.proxy,
+                        tag="KIRO-SWITCH",
+                        headless=self.config.executor_type != "headed",
+                    )
                     reg.log = getattr(self, "_log_fn", print)
                     otp_callback = None
                     mailbox_extra = dict(self.config.extra or {})

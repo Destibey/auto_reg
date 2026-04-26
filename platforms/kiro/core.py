@@ -164,7 +164,7 @@ class _DesktopAuthCallbackServer:
 
 
 class KiroRegister:
-    def __init__(self, proxy=None, tag="KIRO", headless=False):
+    def __init__(self, proxy=None, tag="KIRO", headless=True):
         self.proxy = proxy
         self.tag = tag
         self.headless = headless

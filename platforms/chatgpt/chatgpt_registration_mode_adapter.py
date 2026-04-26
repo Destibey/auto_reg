@@ -70,6 +70,8 @@ class ChatGPTRegistrationContext:
     browser_mode: str
     max_retries: int
     extra_config: dict
+    task_control: Optional[object] = None
+    task_attempt_token: Optional[int] = None
 
 
 class BaseChatGPTRegistrationModeAdapter(ABC):
@@ -157,6 +159,8 @@ class BrowserManualHandoffChatGPTRegistrationAdapter(BaseChatGPTRegistrationMode
             callback_logger=context.callback_logger,
             max_retries=context.max_retries,
             extra_config=context.extra_config,
+            task_control=context.task_control,
+            task_attempt_token=context.task_attempt_token,
         )
 
 

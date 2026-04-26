@@ -173,6 +173,8 @@ class ChatGPTPlatform(BasePlatform):
             browser_mode=browser_mode,
             max_retries=max_retries,
             extra_config=extra_config,
+            task_control=getattr(self, "_task_control", None),
+            task_attempt_token=getattr(self, "_task_attempt_token", None),
         )
         result = adapter.run(context)
         if not result or not result.success:

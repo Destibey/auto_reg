@@ -11,6 +11,8 @@ from typing import Callable, Optional
 
 import requests
 
+from core.task_runtime import TaskInterruption
+
 from .constants import OAUTH_REDIRECT_URI
 from .oauth import OAuthManager, OAuthStart
 from .refresh_token_registration_engine import RegistrationResult
@@ -60,6 +62,13 @@ class ManualBrowserSession:
             pass
 
 
+@dataclass
+class ManualPageState:
+    url: str
+    title: str = ""
+    body_text: str = ""
+
+
 class BrowserManualHandoffRegistrationEngine:
     """Open a real headed browser and wait for the user to finish OAuth."""
 
@@ -72,6 +81,8 @@ class BrowserManualHandoffRegistrationEngine:
         task_uuid: Optional[str] = None,
         max_retries: int = 1,
         extra_config: Optional[dict] = None,
+        task_control: Optional[object] = None,
+        task_attempt_token: Optional[int] = None,
     ):
         self.email_service = email_service
         self.proxy_url = proxy_url
@@ -80,6 +91,8 @@ class BrowserManualHandoffRegistrationEngine:
         self.task_uuid = task_uuid
         self.max_retries = max(1, int(max_retries or 1))
         self.extra_config = dict(extra_config or {})
+        self.task_control = task_control
+        self.task_attempt_token = task_attempt_token
         self.oauth_manager = OAuthManager(proxy_url=proxy_url)
 
         self.email: Optional[str] = None
@@ -109,6 +122,19 @@ class BrowserManualHandoffRegistrationEngine:
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _checkpoint(self) -> None:
+        if self.task_control is None:
+            return
+        self.task_control.checkpoint(attempt_id=self.task_attempt_token)
+
+    @staticmethod
+    def _default_manual_profile_dir(name: str) -> str:
+        if os.name == "posix" and os.uname().sysname == "Darwin":
+            base_dir = Path.home() / "Library" / "Application Support" / "AutoReg" / "manual_profiles"
+        else:
+            base_dir = Path.home() / ".cache" / "autoreg" / "manual_profiles"
+        return str(base_dir / name)
 
     def _create_email(self) -> str:
         if self.email:
@@ -202,7 +228,7 @@ class BrowserManualHandoffRegistrationEngine:
 
         profile_dir = str(
             self.extra_config.get("chatgpt_manual_browser_profile_dir")
-            or Path.cwd() / ".manual_profiles" / "chatgpt"
+            or self._default_manual_profile_dir("chatgpt")
         )
         Path(profile_dir).mkdir(parents=True, exist_ok=True)
         playwright = sync_playwright().start()
@@ -227,7 +253,7 @@ class BrowserManualHandoffRegistrationEngine:
 
         profile_dir = str(
             self.extra_config.get("chatgpt_manual_browser_profile_dir")
-            or Path.cwd() / ".manual_profiles" / "chatgpt_camoufox"
+            or self._default_manual_profile_dir("chatgpt_camoufox")
         )
         Path(profile_dir).mkdir(parents=True, exist_ok=True)
         launch_kwargs = {
@@ -265,27 +291,60 @@ class BrowserManualHandoffRegistrationEngine:
             return self._open_playwright_session()
         raise RuntimeError(f"未知人工接管浏览器 provider: {provider}")
 
-    def _collect_page_urls(self, session: ManualBrowserSession) -> list[str]:
-        urls: list[str] = []
+    def _read_page_state(self, page) -> ManualPageState | None:
+        try:
+            if getattr(page, "is_closed", lambda: False)():
+                return None
+        except Exception:
+            return None
+        try:
+            url = str(page.url or "")
+        except Exception:
+            url = ""
+        title = ""
+        body_text = ""
+        try:
+            title = str(page.title() or "")
+        except Exception:
+            pass
+        try:
+            body_text = str(page.locator("body").inner_text(timeout=500) or "")
+        except Exception:
+            pass
+        if not url and not title and not body_text:
+            return None
+        return ManualPageState(url=url, title=title, body_text=body_text)
+
+    def _collect_page_states(self, session: ManualBrowserSession) -> list[ManualPageState]:
+        states: list[ManualPageState] = []
         try:
             if session.browser is not None:
                 for context in session.browser.contexts:
                     for page in context.pages:
-                        urls.append(str(page.url or ""))
-                return urls
+                        state = self._read_page_state(page)
+                        if state is not None:
+                            states.append(state)
+                return states
         except Exception:
             pass
         try:
             if session.context is not None:
                 for page in session.context.pages:
-                    urls.append(str(page.url or ""))
+                    state = self._read_page_state(page)
+                    if state is not None:
+                        states.append(state)
         except Exception:
             pass
         try:
-            urls.append(str(session.page.url or ""))
+            state = self._read_page_state(session.page)
+            if state is not None:
+                states.append(state)
         except Exception:
             pass
-        return [url for url in urls if url]
+        return states
+
+    def _collect_page_urls(self, session: ManualBrowserSession) -> list[str]:
+        return [state.url for state in self._collect_page_states(session) if state.url]
 
     @staticmethod
     def _find_callback_url(urls: list[str], oauth_start: OAuthStart) -> str:
@@ -300,12 +359,31 @@ class BrowserManualHandoffRegistrationEngine:
         return ""
 
     @staticmethod
-    def _requires_phone(urls: list[str]) -> bool:
-        return any("auth.openai.com/add-phone" in (url or "").lower() for url in urls)
+    def _requires_phone(states: list[ManualPageState] | list[str]) -> bool:
+        needles = (
+            "add-phone",
+            "phone-verification",
+            "verify your phone",
+            "phone number",
+            "add a phone",
+            "手机号",
+            "手机验证",
+            "绑定手机号",
+        )
+        for state in states:
+            if isinstance(state, str):
+                haystack = state
+            else:
+                haystack = " ".join((state.url, state.title, state.body_text))
+            lowered = haystack.lower()
+            if any(needle in lowered for needle in needles):
+                return True
+        return False
 
     def _poll_email_code_for_user(self) -> None:
         if not hasattr(self.email_service, "get_verification_code"):
             return
+        self._checkpoint()
         poll_interval = self._int_config("chatgpt_manual_email_poll_interval_seconds", 10)
         now = time.time()
         if now - self._last_otp_poll < poll_interval:
@@ -342,12 +420,17 @@ class BrowserManualHandoffRegistrationEngine:
         self._log(f"等待你在浏览器中手动完成注册/OAuth 授权，最多 {timeout}s ...")
         deadline = time.time() + timeout
         while time.time() < deadline:
-            urls = self._collect_page_urls(session)
-            if self._requires_phone(urls):
+            self._checkpoint()
+            states = self._collect_page_states(session)
+            if not states:
+                return False, "人工接管浏览器已关闭或不可访问，注册流程已停止。"
+            if self._requires_phone(states):
                 return False, "OpenAI 要求绑定手机号；人工接管模式已按策略停止。"
+            urls = [state.url for state in states if state.url]
             callback_url = self._find_callback_url(urls, oauth_start)
             if callback_url:
                 self._log("检测到 OAuth callback，开始交换 token...")
+                self._checkpoint()
                 return True, self._exchange_callback(callback_url, oauth_start)
             self._poll_email_code_for_user()
             time.sleep(1)
@@ -360,6 +443,7 @@ class BrowserManualHandoffRegistrationEngine:
             self._log("=" * 60)
             self._log("ChatGPT browser_manual_handoff 注册流程启动")
             self._log("=" * 60)
+            self._checkpoint()
 
             email = self._create_email()
             password = self.password or generate_random_password()
@@ -370,6 +454,7 @@ class BrowserManualHandoffRegistrationEngine:
             self._log(f"人工接管密码: {password}")
 
             oauth_start = self.oauth_manager.start_oauth()
+            self._checkpoint()
             session = self._open_browser_session()
             self._log(f"已打开隔离浏览器 provider={session.provider}")
             session.page.goto(oauth_start.auth_url, wait_until="domcontentloaded")
@@ -394,6 +479,8 @@ class BrowserManualHandoffRegistrationEngine:
             }
             self._log("browser_manual_handoff token 提取完成")
             return result
+        except TaskInterruption:
+            raise
         except Exception as e:
             result.error_message = str(e)
             self._log(f"browser_manual_handoff 失败: {e}", "error")

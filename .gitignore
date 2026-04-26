@@ -24,6 +24,7 @@ backend.pid
 accounts.txt
 *_accounts.txt
 account.txt
+.manual_profiles/
 
 # 前端
 frontend/node_modules/

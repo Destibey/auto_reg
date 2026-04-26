@@ -1,9 +1,11 @@
 import unittest
 from unittest import mock
 
+from core.task_runtime import SkipCurrentAttemptRequested, StopTaskRequested
 from platforms.chatgpt.oauth import OAuthStart
 from platforms.chatgpt.browser_manual_handoff_registration_engine import (
     BrowserManualHandoffRegistrationEngine,
+    ManualPageState,
 )
 
 
@@ -32,6 +34,18 @@ class FakeBrowserSession:
 
     def close(self):
         self.closed = True
+
+
+class FakeTaskControl:
+    def __init__(self, exc):
+        self.exc = exc
+        self.calls = 0
+        self.attempt_ids = []
+
+    def checkpoint(self, *, attempt_id=None, consume_skip=True):
+        self.calls += 1
+        self.attempt_ids.append(attempt_id)
+        raise self.exc
 
 
 class BrowserManualHandoffEngineTests(unittest.TestCase):
@@ -64,7 +78,11 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         }
 
         with mock.patch.object(engine, "_open_browser_session", return_value=session):
-            with mock.patch.object(engine, "_collect_page_urls", return_value=[callback_url]):
+            with mock.patch.object(
+                engine,
+                "_collect_page_states",
+                return_value=[ManualPageState(url=callback_url)],
+            ):
                 result = engine.run()
 
         self.assertTrue(result.success)
@@ -84,8 +102,8 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         with mock.patch.object(engine, "_open_browser_session", return_value=session):
             with mock.patch.object(
                 engine,
-                "_collect_page_urls",
-                return_value=["https://auth.openai.com/add-phone"],
+                "_collect_page_states",
+                return_value=[ManualPageState(url="https://auth.openai.com/add-phone")],
             ):
                 result = engine.run()
 
@@ -101,6 +119,54 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
 
         self.assertEqual(session.provider, "fake")
         mocked.assert_called_once()
+
+    def test_add_phone_detection_reads_page_text(self):
+        engine = self._make_engine()
+
+        self.assertTrue(
+            engine._requires_phone(
+                [ManualPageState(url="https://auth.openai.com/u/signup", body_text="Verify your phone number")]
+            )
+        )
+
+    def test_closed_browser_fails_manual_wait(self):
+        session = FakeBrowserSession()
+        engine = self._make_engine()
+
+        with mock.patch.object(engine, "_open_browser_session", return_value=session):
+            with mock.patch.object(engine, "_collect_page_states", return_value=[]):
+                result = engine.run()
+
+        self.assertFalse(result.success)
+        self.assertIn("浏览器已关闭", result.error_message)
+
+    def test_stop_request_interrupts_manual_wait_loop(self):
+        control = FakeTaskControl(StopTaskRequested())
+        engine = self._make_engine()
+        engine.task_control = control
+        engine.task_attempt_token = 7
+
+        with self.assertRaises(StopTaskRequested):
+            engine._wait_for_manual_completion(
+                FakeBrowserSession(),
+                engine.oauth_manager.start_oauth.return_value,
+            )
+
+        self.assertEqual(control.attempt_ids, [7])
+
+    def test_skip_request_interrupts_manual_wait_loop(self):
+        control = FakeTaskControl(SkipCurrentAttemptRequested())
+        engine = self._make_engine()
+        engine.task_control = control
+        engine.task_attempt_token = 8
+
+        with self.assertRaises(SkipCurrentAttemptRequested):
+            engine._wait_for_manual_completion(
+                FakeBrowserSession(),
+                engine.oauth_manager.start_oauth.return_value,
+            )
+
+        self.assertEqual(control.attempt_ids, [8])
 
 
 if __name__ == "__main__":

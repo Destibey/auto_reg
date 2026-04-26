@@ -219,6 +219,7 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
             nonlocal next_start_time
             _proxy = None
             _mailbox = None
+            _platform = None
             attempt_id = task_control.start_attempt()
             try:
                 task_control.checkpoint(attempt_id=attempt_id)
@@ -264,6 +265,7 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
                 _platform._log_fn = lambda msg: _log(task_id, msg)
                 if hasattr(_platform, "bind_task_control"):
                     _platform.bind_task_control(task_control)
+                _platform._task_attempt_token = attempt_id
                 if getattr(_platform, "mailbox", None) is not None:
                     _platform.mailbox._log_fn = _platform._log_fn
                     _platform.mailbox._task_attempt_token = attempt_id
@@ -319,6 +321,8 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
                 _save_task_log(req.platform, req.email or "", "failed", error=str(e))
                 return {"outcome": "failed", "message": str(e)}
             finally:
+                if _platform is not None:
+                    _platform._task_attempt_token = None
                 if _mailbox is not None:
                     _mailbox._task_attempt_token = None
                 task_control.finish_attempt(attempt_id)

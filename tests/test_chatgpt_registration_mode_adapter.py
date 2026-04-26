@@ -129,6 +129,8 @@ class ChatGPTRegistrationModeAdapterTests(unittest.TestCase):
             browser_mode="headed",
             max_retries=5,
             extra_config={"chatgpt_manual_handoff_timeout_seconds": 300},
+            task_control="task-control-demo",
+            task_attempt_token=12,
         )
 
         with mock.patch(
@@ -141,6 +143,8 @@ class ChatGPTRegistrationModeAdapterTests(unittest.TestCase):
         self.assertEqual(created["password"], "pw-demo")
         self.assertEqual(created["kwargs"]["proxy_url"], "http://127.0.0.1:7890")
         self.assertEqual(created["kwargs"]["extra_config"]["chatgpt_manual_handoff_timeout_seconds"], 300)
+        self.assertEqual(created["kwargs"]["task_control"], "task-control-demo")
+        self.assertEqual(created["kwargs"]["task_attempt_token"], 12)
 
 
 if __name__ == "__main__":

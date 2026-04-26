@@ -423,11 +423,6 @@ class RefreshTokenRegistrationEngine:
                 self.session = self.http_client.session
             if flow in {"username_password_create", "oauth_create_account"}:
                 import os
-                browser_provider = str(
-                    self.extra_config.get("chatgpt_sentinel_browser_provider")
-                    or self.extra_config.get("chatgpt_manual_browser_provider")
-                    or "camoufox"
-                ).strip().lower()
                 has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
                 requested_headed = self.browser_mode == "headed"
                 force_headless = (not requested_headed) or (not has_display)
@@ -442,7 +437,6 @@ class RefreshTokenRegistrationEngine:
                 )
                 self._log(
                     "Sentinel Browser 模式: "
-                    f"provider={browser_provider}; "
                     f"requested={self.browser_mode}, "
                     f"actual={'headless' if force_headless else 'headed'}, "
                     f"reason={reason}"
@@ -452,8 +446,6 @@ class RefreshTokenRegistrationEngine:
                     proxy=self.proxy_url,
                     headless=force_headless,
                     device_id=did,
-                    browser_provider=browser_provider,
-                    browser_config=self.extra_config,
                     log_fn=lambda msg: self._log(msg),
                 )
                 if browser_token:

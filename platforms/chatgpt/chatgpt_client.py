@@ -76,7 +76,7 @@ class ChatGPTClient:
     BASE = "https://chatgpt.com"
     AUTH = "https://auth.openai.com"
 
-    def __init__(self, proxy=None, verbose=True, browser_mode="protocol", extra_config=None):
+    def __init__(self, proxy=None, verbose=True, browser_mode="protocol"):
         """
         初始化 ChatGPT 客户端
 
@@ -88,7 +88,6 @@ class ChatGPTClient:
         self.proxy = proxy
         self.verbose = verbose
         self.browser_mode = browser_mode or "protocol"
-        self.extra_config = dict(extra_config or {})
         self.device_id = str(uuid.uuid4())
         self.accept_language = random.choice(
             [
@@ -139,23 +138,16 @@ class ChatGPTClient:
             # 服务器无 XServer，必须强制 headless
             has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
             force_headless = not has_display
-            browser_provider = str(
-                self.extra_config.get("chatgpt_sentinel_browser_provider")
-                or self.extra_config.get("chatgpt_manual_browser_provider")
-                or "camoufox"
-            ).strip().lower()
             token = get_sentinel_token_via_browser(
                 flow=flow,
                 proxy=self.proxy,
                 page_url=page_url,
                 headless=force_headless,
                 device_id=self.device_id,
-                browser_provider=browser_provider,
-                browser_config=self.extra_config,
                 log_fn=lambda msg: self._log(msg),
             )
             if token:
-                self._log(f"{flow}: 已通过 {browser_provider} SentinelSDK 获取 token")
+                self._log(f"{flow}: 已通过 Playwright SentinelSDK 获取 token")
                 return token
 
         token = build_sentinel_token(

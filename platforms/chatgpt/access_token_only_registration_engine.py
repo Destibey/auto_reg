@@ -140,6 +140,7 @@ class AccessTokenOnlyRegistrationEngine:
                         proxy=self.proxy_url,
                         verbose=False,
                         browser_mode=self.browser_mode,
+                        extra_config=self.extra_config,
                     )
                     chatgpt_client._log = self._log
 

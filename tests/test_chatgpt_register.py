@@ -394,7 +394,40 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         token = engine._check_sentinel("device-fixed", flow="username_password_create")
         self.assertEqual(token, '{"source":"browser"}')
         mock_browser_token.assert_called_once()
+        self.assertEqual(mock_browser_token.call_args.kwargs["browser_provider"], "camoufox")
         mock_pow_token.assert_not_called()
+
+    @mock.patch(
+        "platforms.chatgpt.refresh_token_registration_engine.build_sentinel_token",
+        return_value='{"source":"pow"}',
+    )
+    @mock.patch(
+        "platforms.chatgpt.refresh_token_registration_engine.get_sentinel_token_via_browser",
+        return_value='{"source":"browser"}',
+    )
+    def test_check_sentinel_passes_camoufox_fingerprint_config(
+        self, mock_browser_token, _mock_pow_token
+    ):
+        engine = RefreshTokenRegistrationEngine(
+            email_service=DummyEmailService(),
+            proxy_url="http://127.0.0.1:7890",
+            callback_logger=lambda msg: None,
+            extra_config={
+                "chatgpt_camoufox_os": "macos",
+                "chatgpt_camoufox_humanize": "1.5",
+                "chatgpt_camoufox_geoip": True,
+            },
+        )
+        engine.session = mock.Mock()
+
+        token = engine._check_sentinel("device-fixed", flow="username_password_create")
+
+        self.assertEqual(token, '{"source":"browser"}')
+        kwargs = mock_browser_token.call_args.kwargs
+        self.assertEqual(kwargs["browser_provider"], "camoufox")
+        self.assertEqual(kwargs["browser_config"]["chatgpt_camoufox_os"], "macos")
+        self.assertEqual(kwargs["browser_config"]["chatgpt_camoufox_humanize"], "1.5")
+        self.assertTrue(kwargs["browser_config"]["chatgpt_camoufox_geoip"])
 
     @mock.patch(
         "platforms.chatgpt.refresh_token_registration_engine.build_sentinel_token",
@@ -413,9 +446,7 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         token = engine._check_sentinel("device-fixed", flow="oauth_create_account")
         self.assertEqual(token, '{"source":"pow"}')
         mock_browser_token.assert_called_once()
-        mock_pow_token.assert_called_once_with(
-            engine.session, "device-fixed", flow="oauth_create_account"
-        )
+        mock_pow_token.assert_called_once_with(engine.session, "device-fixed", flow="oauth_create_account")
 
 
 if __name__ == "__main__":

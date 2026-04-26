@@ -30,11 +30,19 @@ def _rand_password(n: int = 12) -> str:
 
 
 class GrokRegister:
-    def __init__(self, captcha_solver=None, yescaptcha_key: str = "", proxy=None, log_fn=print):
+    def __init__(
+        self,
+        captcha_solver=None,
+        yescaptcha_key: str = "",
+        proxy=None,
+        log_fn=print,
+        manual_turnstile_timeout_seconds: int = 180,
+    ):
         self.captcha_solver = captcha_solver
         self.key = yescaptcha_key
         self.proxy = proxy
         self.log = log_fn
+        self.manual_turnstile_timeout_seconds = max(1, int(manual_turnstile_timeout_seconds or 180))
 
     def _wait_until(self, fn: Callable[[], bool], timeout: float = 30.0, interval: float = 0.5, desc: str = ""):
         start = time.time()
@@ -241,6 +249,18 @@ class GrokRegister:
             page.wait_for_timeout(wait_ms)
         return ""
 
+    def _wait_for_manual_turnstile(self, page) -> str:
+        timeout = self.manual_turnstile_timeout_seconds
+        self.log(f"  请在打开的浏览器中手动完成 Cloudflare 验证，最多等待 {timeout}s ...")
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            token = self._read_turnstile_token(page)
+            if token and len(token) > 20:
+                self.log(f"  Turnstile token(人工): {token[:40]}...")
+                return token
+            page.wait_for_timeout(1000)
+        raise RuntimeError("等待人工完成 Cloudflare 验证超时")
+
     def _native_click_turnstile(self, page, box, offset_x: float) -> str:
         try:
             user32 = ctypes.windll.user32
@@ -312,6 +332,10 @@ class GrokRegister:
 
     def _solve_turnstile_on_page(self, page) -> str:
         self.log("Step5: 点击页面内 Turnstile 复选框...")
+        solver_name = type(self.captcha_solver).__name__.lower() if self.captcha_solver else ""
+        if "manual" in solver_name:
+            return self._wait_for_manual_turnstile(page)
+
         last_error = None
         for attempt in range(8):
             frame, box = self._find_turnstile_widget(page)

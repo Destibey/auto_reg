@@ -22,7 +22,19 @@ class GrokPlatform(BasePlatform):
         # 优先从任务配置读取，兜底从全局配置读取
         yescaptcha_key = self.config.extra.get("yescaptcha_key") or config_store.get("yescaptcha_key", "")
         captcha_solver = self._make_captcha(key=yescaptcha_key)
-        reg = GrokRegister(captcha_solver=captcha_solver, yescaptcha_key=yescaptcha_key, proxy=self.config.proxy, log_fn=log)
+        try:
+            manual_turnstile_timeout = int(
+                self.config.extra.get("grok_manual_turnstile_timeout_seconds") or 180
+            )
+        except (TypeError, ValueError):
+            manual_turnstile_timeout = 180
+        reg = GrokRegister(
+            captcha_solver=captcha_solver,
+            yescaptcha_key=yescaptcha_key,
+            proxy=self.config.proxy,
+            log_fn=log,
+            manual_turnstile_timeout_seconds=manual_turnstile_timeout,
+        )
         mailbox_attempts = 1 if email else int(self.config.extra.get("grok_mailbox_attempts", 8))
         otp_timeout = self.get_mailbox_otp_timeout()
         last_error = None

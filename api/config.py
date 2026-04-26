@@ -63,6 +63,7 @@ CONFIG_KEYS = [
     "chatgpt_manual_browser_provider",
     "chatgpt_manual_handoff_timeout_seconds",
     "chatgpt_manual_email_poll_interval_seconds",
+    "chatgpt_manual_enable_token_callback",
     "chatgpt_manual_browser_profile_dir",
     "chatgpt_manual_browser_keep_open",
     "chatgpt_camoufox_geoip",
@@ -125,6 +126,8 @@ def get_config():
         all_cfg["chatgpt_manual_handoff_timeout_seconds"] = "900"
     if not all_cfg.get("chatgpt_manual_email_poll_interval_seconds"):
         all_cfg["chatgpt_manual_email_poll_interval_seconds"] = "10"
+    if not all_cfg.get("chatgpt_manual_enable_token_callback"):
+        all_cfg["chatgpt_manual_enable_token_callback"] = False
     # 只返回已知 key，未设置的返回空字符串
     return {k: all_cfg.get(k, "") for k in CONFIG_KEYS}
 

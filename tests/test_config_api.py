@@ -23,6 +23,7 @@ def test_config_exposes_camoufox_manual_handoff_defaults(monkeypatch):
     assert data["chatgpt_manual_browser_provider"] == "camoufox"
     assert data["chatgpt_manual_handoff_timeout_seconds"] == "900"
     assert data["chatgpt_manual_email_poll_interval_seconds"] == "10"
+    assert "chatgpt_manual_enable_token_callback" in data
     assert "chatgpt_manual_browser_profile_dir" in data
     assert "chatgpt_manual_browser_keep_open" in data
     assert "chatgpt_camoufox_geoip" in data
@@ -40,6 +41,7 @@ def test_config_update_allows_camoufox_manual_handoff_keys(monkeypatch):
                 "chatgpt_manual_browser_provider": "camoufox",
                 "chatgpt_manual_handoff_timeout_seconds": "600",
                 "chatgpt_manual_email_poll_interval_seconds": "5",
+                "chatgpt_manual_enable_token_callback": True,
                 "chatgpt_manual_browser_profile_dir": "/tmp/autoreg-camoufox",
                 "chatgpt_manual_browser_keep_open": True,
                 "chatgpt_camoufox_geoip": True,
@@ -55,6 +57,7 @@ def test_config_update_allows_camoufox_manual_handoff_keys(monkeypatch):
         "chatgpt_manual_browser_provider": "camoufox",
         "chatgpt_manual_handoff_timeout_seconds": "600",
         "chatgpt_manual_email_poll_interval_seconds": "5",
+        "chatgpt_manual_enable_token_callback": True,
         "chatgpt_manual_browser_profile_dir": "/tmp/autoreg-camoufox",
         "chatgpt_manual_browser_keep_open": True,
         "chatgpt_camoufox_geoip": True,

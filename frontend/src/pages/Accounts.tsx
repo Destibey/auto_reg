@@ -683,6 +683,7 @@ export default function Accounts() {
         chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_handoff_timeout_seconds: cfg.chatgpt_manual_handoff_timeout_seconds,
         chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds,
+        chatgpt_manual_enable_token_callback: parseBooleanConfigValue(cfg.chatgpt_manual_enable_token_callback),
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir,
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
         chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize,

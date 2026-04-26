@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from api.tasks import RegisterTaskRequest, _create_task_record, _run_register, _task_store
+from api.tasks import RegisterTaskRequest, _auto_upload_integrations, _create_task_record, _run_register, _task_store
 from core.base_mailbox import BaseMailbox, MailboxAccount
 from core.base_platform import Account, BasePlatform
 
@@ -129,6 +129,24 @@ class RegisterTaskControlFlowTests(unittest.TestCase):
         self.assertEqual(snapshot["success"], 0)
         self.assertEqual(snapshot["skipped"], 0)
         self.assertEqual(snapshot["errors"], ["获取验证码失败"])
+
+    def test_signup_only_manual_handoff_skips_auto_upload(self):
+        account = Account(
+            platform="chatgpt",
+            email="manual@example.com",
+            password="pw",
+            extra={"manual_handoff_stage": "signup_only"},
+        )
+
+        with (
+            patch("services.external_sync.sync_account") as sync_account,
+            patch("api.tasks._log") as log,
+        ):
+            _auto_upload_integrations("task-manual-handoff", account)
+
+        sync_account.assert_not_called()
+        log.assert_called_once()
+        self.assertIn("signup-only", log.call_args.args[1])
 
 
 if __name__ == "__main__":

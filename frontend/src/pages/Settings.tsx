@@ -294,10 +294,11 @@ const TAB_ITEMS = [
       },
       {
         title: 'Camoufox 浏览器人工接管',
-        desc: 'ChatGPT browser_manual_handoff 模式使用；只启动本地 Camoufox 打开普通 ChatGPT 入口，等待你手动完成注册。',
+        desc: 'ChatGPT browser_manual_handoff 模式使用；默认只启动本地 Camoufox 打开普通 ChatGPT 入口，第二段 OAuth/token 动作需显式开启。',
         fields: [
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
+          { key: 'chatgpt_manual_enable_token_callback', label: '注册后继续 OAuth 取 token', type: 'boolean' },
           { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '留空使用系统默认用户目录' },
           { key: 'chatgpt_camoufox_os', label: 'OS 指纹范围', type: 'select' },
           { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '留空关闭；可填 true 或 1.5' },
@@ -1186,6 +1187,7 @@ export default function Settings() {
       if (!data.chatgpt_manual_email_poll_interval_seconds) {
         data.chatgpt_manual_email_poll_interval_seconds = '10'
       }
+      data.chatgpt_manual_enable_token_callback = parseBooleanConfigValue(data.chatgpt_manual_enable_token_callback)
       data.cfworker_domains = parseStoredDomainList(data.cfworker_domains)
       data.cfworker_enabled_domains = parseStoredDomainList(data.cfworker_enabled_domains)
       data.cfworker_random_subdomain = parseBooleanConfigValue(data.cfworker_random_subdomain)
@@ -1215,6 +1217,7 @@ export default function Settings() {
       }
       values.cfworker_random_subdomain = parseBooleanConfigValue(values.cfworker_random_subdomain)
       values.chatgpt_manual_browser_provider = 'camoufox'
+      values.chatgpt_manual_enable_token_callback = parseBooleanConfigValue(values.chatgpt_manual_enable_token_callback)
       values.chatgpt_camoufox_geoip = parseBooleanConfigValue(values.chatgpt_camoufox_geoip)
       values.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(values.chatgpt_manual_browser_keep_open)
 
@@ -1225,6 +1228,7 @@ export default function Settings() {
         cfworker_domain: domains.length > 0 ? '' : values.cfworker_domain,
         cfworker_random_subdomain: values.cfworker_random_subdomain,
         chatgpt_manual_browser_provider: 'camoufox',
+        chatgpt_manual_enable_token_callback: values.chatgpt_manual_enable_token_callback,
         chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
         chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       })

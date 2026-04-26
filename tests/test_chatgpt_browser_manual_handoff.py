@@ -7,6 +7,7 @@ from platforms.chatgpt.browser_manual_handoff_registration_engine import (
     DEFAULT_CHATGPT_MANUAL_SIGNUP_URL,
     ManualPageState,
 )
+from platforms.chatgpt.oauth import OAuthStart
 
 
 class FakeEmailService:
@@ -20,9 +21,11 @@ class FakeEmailService:
 class FakePage:
     def __init__(self):
         self.goto_url = ""
+        self.goto_urls = []
 
     def goto(self, url, **_kwargs):
         self.goto_url = url
+        self.goto_urls.append(url)
 
 
 class FakeBrowserSession:
@@ -80,6 +83,53 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertEqual(session.page.goto_url, DEFAULT_CHATGPT_MANUAL_SIGNUP_URL)
         session.close()
         self.assertTrue(session.closed)
+
+    def test_token_callback_stage_runs_only_when_enabled(self):
+        session = FakeBrowserSession()
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_manual_handoff_timeout_seconds": 5,
+                "chatgpt_manual_enable_token_callback": True,
+            },
+        )
+        engine.password = "pw-demo"
+        engine.oauth_manager = mock.Mock(
+            start_oauth=mock.Mock(
+                return_value=OAuthStart(
+                    auth_url="https://auth.example/authorize",
+                    state="state-demo",
+                    code_verifier="verifier-demo",
+                    redirect_uri="http://localhost/callback",
+                )
+            )
+        )
+
+        with mock.patch.object(engine, "_open_browser_session", return_value=session):
+            with mock.patch.object(engine, "_wait_for_manual_completion", return_value=(True, "signup ok")):
+                with mock.patch.object(
+                    engine,
+                    "_wait_for_token_callback",
+                    return_value=(
+                        True,
+                        {
+                            "email": "manual@example.com",
+                            "account_id": "acct-demo",
+                            "access_token": "at-demo",
+                            "refresh_token": "rt-demo",
+                            "id_token": "id-demo",
+                        },
+                    ),
+                ):
+                    result = engine.run()
+
+        self.assertTrue(result.success)
+        self.assertEqual(session.page.goto_urls, [DEFAULT_CHATGPT_MANUAL_SIGNUP_URL, "https://auth.example/authorize"])
+        self.assertEqual(result.account_id, "acct-demo")
+        self.assertEqual(result.access_token, "at-demo")
+        self.assertEqual(result.refresh_token, "rt-demo")
+        self.assertEqual(result.metadata["manual_handoff_stage"], "token_callback")
 
     def test_add_phone_fails_without_token_exchange(self):
         session = FakeBrowserSession()

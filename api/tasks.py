@@ -170,9 +170,32 @@ def _save_task_log(platform: str, email: str, status: str,
         s.commit()
 
 
+def _get_account_extra(account) -> dict:
+    if hasattr(account, "get_extra"):
+        try:
+            extra = account.get_extra()
+            if isinstance(extra, dict):
+                return extra
+        except Exception:
+            pass
+    extra = getattr(account, "extra", {})
+    return extra if isinstance(extra, dict) else {}
+
+
+def _is_chatgpt_signup_only_manual_handoff(account) -> bool:
+    if getattr(account, "platform", "") != "chatgpt":
+        return False
+    extra = _get_account_extra(account)
+    return extra.get("manual_handoff_stage") == "signup_only"
+
+
 def _auto_upload_integrations(task_id: str, account):
     """注册成功后自动导入外部系统。"""
     try:
+        if _is_chatgpt_signup_only_manual_handoff(account):
+            _log(task_id, "  [Auto Upload] browser_manual_handoff signup-only 不产生 token，跳过自动上传")
+            return
+
         from services.external_sync import sync_account
 
         for result in sync_account(account):

@@ -94,6 +94,7 @@ export default function RegisterTaskPage() {
         chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_handoff_timeout_seconds: cfg.chatgpt_manual_handoff_timeout_seconds || '900',
         chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds || '10',
+        chatgpt_manual_enable_token_callback: parseBooleanConfigValue(cfg.chatgpt_manual_enable_token_callback),
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir || '',
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
         chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '',
@@ -171,6 +172,7 @@ export default function RegisterTaskPage() {
       chatgpt_manual_browser_provider: 'camoufox',
       chatgpt_manual_handoff_timeout_seconds: values.chatgpt_manual_handoff_timeout_seconds,
       chatgpt_manual_email_poll_interval_seconds: values.chatgpt_manual_email_poll_interval_seconds,
+      chatgpt_manual_enable_token_callback: values.chatgpt_manual_enable_token_callback,
       chatgpt_manual_browser_profile_dir: values.chatgpt_manual_browser_profile_dir,
       chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
       chatgpt_camoufox_humanize: values.chatgpt_camoufox_humanize,
@@ -244,10 +246,15 @@ export default function RegisterTaskPage() {
   const mailProvider = Form.useWatch('mail_provider', form)
   const captchaSolver = Form.useWatch('captcha_solver', form)
   const platform = Form.useWatch('platform', form)
+  const manualTokenCallbackEnabled = parseBooleanConfigValue(
+    Form.useWatch('chatgpt_manual_enable_token_callback', form),
+  )
   const executorOptions = getExecutorOptions(platform)
   const isChatGPTManualHandoff =
     platform === 'chatgpt' &&
     chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+  const showChatGPTUploadConfig =
+    platform === 'chatgpt' && (!isChatGPTManualHandoff || manualTokenCallbackEnabled)
 
   useEffect(() => {
     if (isChatGPTManualHandoff) {
@@ -283,6 +290,7 @@ export default function RegisterTaskPage() {
         chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_handoff_timeout_seconds: '900',
         chatgpt_manual_email_poll_interval_seconds: '10',
+        chatgpt_manual_enable_token_callback: false,
         chatgpt_camoufox_geoip: false,
         chatgpt_camoufox_humanize: '',
         chatgpt_camoufox_os: '',
@@ -369,7 +377,11 @@ export default function RegisterTaskPage() {
                 showIcon
                 style={{ marginBottom: 16 }}
                 message="浏览器人工接管模式"
-                description="系统只打开 Camoufox 普通 ChatGPT 注册入口；验证码、Cloudflare、手机号页都需要你本人处理。若进入 add-phone，会直接失败，不会自动处理手机号。当前只保存邮箱和密码，不自动取 token。"
+                description={
+                  manualTokenCallbackEnabled
+                    ? '系统先打开 Camoufox 普通 ChatGPT 注册入口；检测到你进入 ChatGPT 后，才会打开第二段 OAuth 授权页取 token。若进入 add-phone，会直接失败，不会自动处理手机号。'
+                    : '系统只打开 Camoufox 普通 ChatGPT 注册入口；验证码、Cloudflare、手机号页都需要你本人处理。若进入 add-phone，会直接失败，不会自动处理手机号。当前只保存邮箱和密码，不自动取 token。'
+                }
               />
             )}
         </Card>
@@ -425,6 +437,23 @@ export default function RegisterTaskPage() {
                   <Input placeholder="true / 1.5" />
                 </Form.Item>
               </Space>
+              <Form.Item
+                name="chatgpt_manual_enable_token_callback"
+                label="第二段 OAuth/token 动作"
+                valuePropName="checked"
+                extra="默认关闭。开启后会在检测到普通注册完成后，继续打开 OAuth 授权页并等待 callback 取 token，随后才可自动上传到 token 平台。"
+              >
+                <Checkbox>注册完成后继续进入 OAuth callback 取 token</Checkbox>
+              </Form.Item>
+              {!manualTokenCallbackEnabled && (
+                <Alert
+                  type="success"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="第二段动作已关闭"
+                  description="当前任务只做普通注册并保存邮箱/密码，不会取 token，也不会自动上传到 CPA、Sub2API、CodexProxy 或 Team Manager。"
+                />
+              )}
               <Form.Item
                 name="chatgpt_camoufox_geoip"
                 label="GeoIP 跟随代理"
@@ -639,7 +668,7 @@ export default function RegisterTaskPage() {
           )}
         </Card>
 
-        {platform === 'chatgpt' && (
+        {platform === 'chatgpt' && !isChatGPTManualHandoff && (
           <Card title="ChatGPT 手机验证" style={{ marginBottom: 16 }}>
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
               仅在 OAuth 流程进入 `add_phone` 时使用，用于自动取号并轮询短信验证码。
@@ -665,7 +694,7 @@ export default function RegisterTaskPage() {
           </Card>
         )}
 
-        {platform === 'chatgpt' && (
+        {showChatGPTUploadConfig && (
           <Card title="自动上传配置" style={{ marginBottom: 16 }}>
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
               注册成功后自动上传到外部管理平台（留空则不上传）

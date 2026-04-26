@@ -8,6 +8,7 @@ import {
   HistoryOutlined,
   SettingOutlined,
   ClockCircleOutlined,
+  PlayCircleOutlined,
   SunOutlined,
   MoonOutlined,
   ThunderboltOutlined,
@@ -65,6 +66,7 @@ function AppContent() {
     const path = location.pathname
     if (path === '/') return ['/']
     if (path.startsWith('/accounts')) return [path]
+    if (path === '/register-task' || path === '/register') return ['/register-task']
     if (path === '/history') return ['/history']
     if (path === '/proxies') return ['/proxies']
     if (path === '/settings') return ['/settings']
@@ -91,6 +93,11 @@ function AppContent() {
       key: '/history',
       icon: <HistoryOutlined />,
       label: '任务历史',
+    },
+    {
+      key: '/register-task',
+      icon: <PlayCircleOutlined />,
+      label: '注册任务',
     },
     {
       key: '/scheduled',

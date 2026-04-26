@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -48,6 +48,7 @@ class ManualBrowserSession:
     keep_open: bool = False
     profile_dir: str = ""
     cleanup_profile_on_close: bool = False
+    headless: bool = False
 
     def close(self) -> None:
         if self.keep_open:
@@ -193,6 +194,12 @@ class BrowserManualHandoffRegistrationEngine:
 
     def _assisted_signup_enabled(self) -> bool:
         return self._bool_config("chatgpt_assisted_signup", False)
+
+    def _assisted_headless_first_enabled(self) -> bool:
+        return self._assisted_signup_enabled() and self._bool_config(
+            "chatgpt_camoufox_assisted_headless_first",
+            True,
+        )
 
     def _registration_mode_name(self) -> str:
         if self._assisted_signup_enabled():
@@ -652,13 +659,23 @@ class BrowserManualHandoffRegistrationEngine:
             cleanup_profile_on_close=cleanup_profile,
         )
 
-    def _open_camoufox_session(self) -> ManualBrowserSession:
+    def _open_camoufox_session(
+        self,
+        *,
+        headless: bool | None = None,
+        profile_dir: str | None = None,
+        cleanup_profile: bool | None = None,
+    ) -> ManualBrowserSession:
         from camoufox.sync_api import Camoufox
 
-        profile_dir, cleanup_profile = self._manual_profile_dir("chatgpt_camoufox")
+        if profile_dir is None:
+            profile_dir, cleanup_profile = self._manual_profile_dir("chatgpt_camoufox")
+        elif cleanup_profile is None:
+            cleanup_profile = False
         Path(profile_dir).mkdir(parents=True, exist_ok=True)
-        launch_kwargs = self._build_camoufox_launch_kwargs(profile_dir)
-        self._log("启动本地 Camoufox 隔离浏览器（本次任务使用全新 profile）...")
+        launch_kwargs = self._build_camoufox_launch_kwargs(profile_dir, headless=headless)
+        mode_label = "无头" if launch_kwargs.get("headless") else "有头"
+        self._log(f"启动本地 Camoufox 隔离浏览器（{mode_label}，本次任务使用全新 profile）...")
         camoufox = Camoufox(**launch_kwargs)
         context = camoufox.__enter__()
         page = context.new_page()
@@ -669,12 +686,13 @@ class BrowserManualHandoffRegistrationEngine:
             playwright=camoufox,
             keep_open=self._bool_config("chatgpt_manual_browser_keep_open", False),
             profile_dir=profile_dir,
-            cleanup_profile_on_close=cleanup_profile,
+            cleanup_profile_on_close=bool(cleanup_profile),
+            headless=bool(launch_kwargs.get("headless")),
         )
 
-    def _build_camoufox_launch_kwargs(self, profile_dir: str) -> dict:
+    def _build_camoufox_launch_kwargs(self, profile_dir: str, *, headless: bool | None = None) -> dict:
         launch_kwargs = {
-            "headless": False,
+            "headless": self._assisted_headless_first_enabled() if headless is None else bool(headless),
             "persistent_context": True,
             "user_data_dir": profile_dir,
             "enable_cache": True,
@@ -1007,6 +1025,33 @@ class BrowserManualHandoffRegistrationEngine:
     def _assist_signup_page(self, page, payload: dict) -> dict:
         result = page.evaluate(self._assisted_signup_script(), payload)
         return result if isinstance(result, dict) else {}
+
+    def _promote_assisted_session_to_headed(
+        self,
+        session: ManualBrowserSession,
+        states: list[ManualPageState],
+    ) -> ManualBrowserSession:
+        if session.provider != "camoufox" or not session.headless or not session.profile_dir:
+            return session
+        current_url = next((state.url for state in states if state.url), "") or self._manual_signup_url()
+        cleanup_profile = session.cleanup_profile_on_close
+        session.cleanup_profile_on_close = False
+        session.keep_open = False
+        try:
+            session.close()
+        finally:
+            session.cleanup_profile_on_close = cleanup_profile
+        self._log("需要人工接管，正在打开有头 Camoufox 窗口并恢复当前注册页面...")
+        headed_session = self._open_camoufox_session(
+            headless=False,
+            profile_dir=session.profile_dir,
+            cleanup_profile=cleanup_profile,
+        )
+        if current_url:
+            headed_session.page.goto(current_url, wait_until="domcontentloaded")
+        for field in fields(ManualBrowserSession):
+            setattr(session, field.name, getattr(headed_session, field.name))
+        return session
 
     @staticmethod
     def _assisted_signup_script() -> str:
@@ -1378,6 +1423,8 @@ class BrowserManualHandoffRegistrationEngine:
             if self._assist_signup_pages(session):
                 seen_signup_flow = True
             if self._assisted_handoff_clipboard_prepared:
+                if session.headless:
+                    session = self._promote_assisted_session_to_headed(session, states)
                 self._install_clipboard_paste_watcher(session)
                 self._advance_clipboard_from_visible_inputs(session)
             time.sleep(1)

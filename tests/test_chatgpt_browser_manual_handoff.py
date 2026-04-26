@@ -482,10 +482,76 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
 
         self.assertEqual(launch_kwargs["user_data_dir"], "/tmp/autoreg-camoufox")
+        self.assertFalse(launch_kwargs["headless"])
         self.assertNotIn("window", launch_kwargs)
         self.assertNotIn("geoip", launch_kwargs)
         self.assertNotIn("humanize", launch_kwargs)
         self.assertNotIn("os", launch_kwargs)
+
+    def test_assisted_camoufox_launch_is_headless_first_by_default(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_assisted_signup": True},
+        )
+
+        launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertTrue(launch_kwargs["headless"])
+
+    def test_assisted_camoufox_launch_can_disable_headless_first(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_assisted_signup": True,
+                "chatgpt_camoufox_assisted_headless_first": False,
+            },
+        )
+
+        launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertFalse(launch_kwargs["headless"])
+
+    def test_assisted_headless_handoff_reopens_headed_with_same_profile(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_assisted_signup": True},
+        )
+        old_session = ManualBrowserSession(
+            provider="camoufox",
+            page=FakePage(),
+            context=FakeClosableContext(),
+            playwright=FakeCamoufoxManager(),
+            profile_dir="/tmp/autoreg-camoufox-profile",
+            cleanup_profile_on_close=True,
+            headless=True,
+        )
+        new_page = FakePage()
+        headed_session = ManualBrowserSession(
+            provider="camoufox",
+            page=new_page,
+            profile_dir="/tmp/autoreg-camoufox-profile",
+            cleanup_profile_on_close=True,
+            headless=False,
+        )
+
+        with mock.patch.object(engine, "_open_camoufox_session", return_value=headed_session) as open_camoufox:
+            promoted = engine._promote_assisted_session_to_headed(
+                old_session,
+                [ManualPageState(url="https://chatgpt.com/auth/signup")],
+            )
+
+        self.assertIs(promoted, old_session)
+        open_camoufox.assert_called_once_with(
+            headless=False,
+            profile_dir="/tmp/autoreg-camoufox-profile",
+            cleanup_profile=True,
+        )
+        self.assertIs(old_session.page, new_page)
+        self.assertFalse(old_session.headless)
+        self.assertEqual(new_page.goto_urls, ["https://chatgpt.com/auth/signup"])
 
     def test_default_manual_profile_dir_is_unique_and_marked_for_cleanup(self):
         engine = self._make_engine()

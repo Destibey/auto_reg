@@ -402,7 +402,7 @@ export default function RegisterTaskPage() {
                 showIcon
                 style={{ marginBottom: 16 }}
                 message="Camoufox 浏览器模式不使用执行器选择"
-                description="该模式固定启动 Camoufox 打开普通 ChatGPT 页面；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
+                description="人工接管模式会启动有头 Camoufox；自动辅助模式会先无头静默运行，只有需要你接管时才打开有头窗口。protocol/headless/headed 不会改变 Camoufox 的启动方式。"
               />
             </>
           ) : (
@@ -505,7 +505,7 @@ export default function RegisterTaskPage() {
           isChatGPTBrowserMode && (
             <Card title="ChatGPT Camoufox 浏览器模式" style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                使用本地 Camoufox 隔离有头浏览器。人工接管模式只打开页面并提示资料；自动辅助模式会尝试填写固定注册字段，遇到确认勾选、人工验证或异常页面时保留人工接管。
+                使用本地 Camoufox 隔离浏览器。人工接管模式直接打开有头窗口；自动辅助模式先无头静默填写固定注册字段，遇到确认勾选、人工验证或异常页面时才打开有头窗口交给你接管。
               </Text>
               <Form.Item name="chatgpt_manual_browser_provider" hidden>
                 <Input />

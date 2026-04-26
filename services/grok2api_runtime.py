@@ -4,6 +4,8 @@ from typing import Tuple
 
 import requests
 
+ADMIN_VERIFY_PATHS = ("/admin/api/verify", "/v1/admin/verify")
+
 
 def _get_config(key: str, default: str = "") -> str:
     try:
@@ -25,14 +27,21 @@ def verify_grok2api(api_url: str | None = None, app_key: str | None = None) -> T
         return False, "grok2api App Key 未配置"
 
     try:
-        resp = requests.get(
-            f"{api_url.rstrip('/')}/v1/admin/verify",
-            headers={"Authorization": f"Bearer {app_key}"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            return True, "grok2api 鉴权正常"
-        return False, f"grok2api 鉴权失败: HTTP {resp.status_code} - {resp.text[:200]}"
+        last_resp = None
+        for path in ADMIN_VERIFY_PATHS:
+            resp = requests.get(
+                f"{api_url.rstrip('/')}{path}",
+                headers={"Authorization": f"Bearer {app_key}"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return True, "grok2api 鉴权正常"
+            last_resp = resp
+            if resp.status_code != 404:
+                break
+        if last_resp is None:
+            return False, "grok2api 鉴权失败: 未收到响应"
+        return False, f"grok2api 鉴权失败: HTTP {last_resp.status_code} - {last_resp.text[:200]}"
     except Exception as e:
         return False, f"grok2api 连接失败: {e}"
 

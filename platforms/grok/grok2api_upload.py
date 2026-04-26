@@ -9,11 +9,13 @@ from curl_cffi import requests as cffi_requests
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_POOL = "ssoBasic"
+DEFAULT_POOL = "basic"
 DEFAULT_QUOTAS = {
-    "ssoBasic": 80,
-    "ssoSuper": 140,
+    "basic": 80,
+    "super": 140,
+    "heavy": 140,
 }
+ADMIN_TOKENS_PATHS = ("/admin/api/tokens", "/v1/admin/tokens")
 
 
 def _get_config_value(key: str) -> str:
@@ -32,6 +34,17 @@ def _normalize_quota(pool_name: str, quota) -> int:
         except Exception:
             pass
     return DEFAULT_QUOTAS.get(pool_name, DEFAULT_QUOTAS[DEFAULT_POOL])
+
+
+def _normalize_pool_name(pool_name: str | None) -> str:
+    value = str(pool_name or "").strip().lower()
+    if value in ("", "auto", "basic", "ssobasic"):
+        return "basic"
+    if value in ("super", "ssosuper"):
+        return "super"
+    if value == "heavy":
+        return "heavy"
+    return value
 
 
 def _extract_sso(account) -> str:
@@ -57,7 +70,7 @@ def build_grok2api_payload(
     if not token:
         raise ValueError("账号缺少 sso token")
 
-    pool_name = str(pool_name or _get_config_value("grok2api_pool") or DEFAULT_POOL).strip() or DEFAULT_POOL
+    pool_name = _normalize_pool_name(pool_name or _get_config_value("grok2api_pool") or DEFAULT_POOL)
     email = getattr(account, "email", "")
     payload = {
         pool_name: [
@@ -92,23 +105,70 @@ def _build_headers(app_key: str) -> dict:
 def _build_token_item(account, pool_name: str | None = None, quota=None) -> tuple[str, dict]:
     payload = build_grok2api_payload(account, pool_name=pool_name, quota=quota)
     normalized_pool_name = next(iter(payload.keys()))
-    return normalized_pool_name, payload[normalized_pool_name][0]
+    token_item = payload[normalized_pool_name][0]
+    return normalized_pool_name, {
+        "token": token_item["token"],
+        "tags": token_item.get("tags") or [],
+    }
 
 
-def _load_existing_tokens(api_url: str, headers: dict) -> dict:
-    resp = cffi_requests.get(
-        f"{api_url.rstrip('/')}/v1/admin/tokens",
-        headers=headers,
-        **_request_options(),
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(f"读取现有 tokens 失败: HTTP {resp.status_code} - {resp.text[:200]}")
+def _normalize_token_item(item) -> dict | None:
+    if isinstance(item, str):
+        token = item.strip()
+        return {"token": token, "tags": []} if token else None
+    if not isinstance(item, dict):
+        return None
+    token = str(item.get("token") or "").strip()
+    if not token:
+        return None
+    return {
+        "token": token,
+        "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
+    }
 
-    data = resp.json()
+
+def _normalize_existing_tokens(data: dict) -> dict:
+    if not isinstance(data, dict):
+        raise RuntimeError("读取现有 tokens 失败: 响应格式异常")
     tokens = data.get("tokens", {})
+    if isinstance(tokens, list):
+        normalized: dict[str, list[dict]] = {}
+        for item in tokens:
+            token_item = _normalize_token_item(item)
+            if not token_item:
+                continue
+            pool_name = _normalize_pool_name(item.get("pool") if isinstance(item, dict) else DEFAULT_POOL)
+            normalized.setdefault(pool_name, []).append(token_item)
+        return normalized
     if not isinstance(tokens, dict):
         raise RuntimeError("读取现有 tokens 失败: 响应格式异常")
-    return tokens
+    normalized = {}
+    for pool_name, pool_tokens in tokens.items():
+        items = pool_tokens if isinstance(pool_tokens, list) else []
+        normalized[_normalize_pool_name(pool_name)] = [
+            token_item
+            for token_item in (_normalize_token_item(item) for item in items)
+            if token_item
+        ]
+    return normalized
+
+
+def _load_existing_tokens(api_url: str, headers: dict) -> tuple[dict, str]:
+    last_resp = None
+    for path in ADMIN_TOKENS_PATHS:
+        resp = cffi_requests.get(
+            f"{api_url.rstrip('/')}{path}",
+            headers=headers,
+            **_request_options(),
+        )
+        if resp.status_code == 200:
+            return _normalize_existing_tokens(resp.json()), path
+        last_resp = resp
+        if resp.status_code != 404:
+            break
+    if last_resp is None:
+        raise RuntimeError("读取现有 tokens 失败: 未收到响应")
+    raise RuntimeError(f"读取现有 tokens 失败: HTTP {last_resp.status_code} - {last_resp.text[:200]}")
 
 
 def _merge_token(existing_tokens: dict, pool_name: str, token_item: dict) -> dict:
@@ -159,14 +219,13 @@ def upload_to_grok2api(
         return False, "grok2api App Key 未配置"
 
     pool_name, token_item = _build_token_item(account, pool_name=pool_name, quota=quota)
-    upload_url = f"{api_url.rstrip('/')}/v1/admin/tokens"
     headers = _build_headers(app_key)
 
     try:
-        existing_tokens = _load_existing_tokens(api_url, headers)
+        existing_tokens, tokens_path = _load_existing_tokens(api_url, headers)
         payload = _merge_token(existing_tokens, pool_name, token_item)
         resp = cffi_requests.post(
-            upload_url,
+            f"{api_url.rstrip('/')}{tokens_path}",
             headers=headers,
             json=payload,
             **_request_options(),

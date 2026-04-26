@@ -35,7 +35,10 @@ def sync_account(account) -> list[dict[str, Any]]:
     if platform == "chatgpt":
         upload_account = _build_chatgpt_upload_account()
 
-        cpa_url = str(config_store.get("cpa_api_url", "") or "").strip()
+        cpa_url = (
+            str(config_store.get("cliproxyapi_base_url", "") or "").strip()
+            or str(config_store.get("cpa_api_url", "") or "").strip()
+        )
         if cpa_url:
             ok, msg = upload_chatgpt_account_to_cpa(account)
             persist_cpa_sync_result(account, ok, msg)
@@ -79,6 +82,7 @@ def sync_account(account) -> list[dict[str, Any]]:
         grok2api_url = str(config_store.get("grok2api_url", "") or "").strip()
         if grok2api_url:
             from services.grok2api_runtime import ensure_grok2api_ready
+            from services.grok2api_cpa_bridge import ensure_grok2api_openai_compat_in_cpa
             from platforms.grok.grok2api_upload import upload_to_grok2api
 
             ready, ready_msg = ensure_grok2api_ready()
@@ -88,6 +92,14 @@ def sync_account(account) -> list[dict[str, Any]]:
 
             ok, msg = upload_to_grok2api(account)
             results.append({"name": "grok2api", "ok": ok, "msg": msg})
+            if ok:
+                cpa_url = (
+                    str(config_store.get("cliproxyapi_base_url", "") or "").strip()
+                    or str(config_store.get("cpa_api_url", "") or "").strip()
+                )
+                if cpa_url:
+                    bridge_ok, bridge_msg = ensure_grok2api_openai_compat_in_cpa()
+                    results.append({"name": "CPA/CLIProxyAPI(grok2api)", "ok": bridge_ok, "msg": bridge_msg})
 
     elif platform == "kiro":
         from platforms.kiro.account_manager_upload import resolve_manager_path, upload_to_kiro_manager

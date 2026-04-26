@@ -94,6 +94,9 @@ def backfill_integrations(body: BackfillRequest):
                 or str(get_cliproxy_sync_state(row).get("remote_state") or "").strip().lower() == "not_found"
             ]
 
+        from core.config_store import config_store
+
+        grok2api_url = str(config_store.get("grok2api_url", "") or "").strip() or "http://127.0.0.1:8011"
         if any(row.platform == "grok" for row in rows):
             from services.grok2api_runtime import ensure_grok2api_ready
 
@@ -125,14 +128,29 @@ def backfill_integrations(body: BackfillRequest):
                         summary["failed"] += 1
 
                 elif row.platform == "grok":
-                    from core.config_store import config_store
+                    from services.grok2api_cpa_bridge import ensure_grok2api_openai_compat_in_cpa
                     from platforms.grok.grok2api_upload import upload_to_grok2api
 
                     account = _to_account(row)
                     api_url = str(config_store.get("grok2api_url", "") or "").strip() or "http://127.0.0.1:8011"
-                    app_key = str(config_store.get("grok2api_app_key", "") or "").strip() or "grok2api"
-                    ok, msg = upload_to_grok2api(account, api_url=api_url, app_key=app_key)
-                    results.append({"name": "grok2api", "ok": ok, "msg": msg})
+                    if api_url:
+                        app_key = str(config_store.get("grok2api_app_key", "") or "").strip() or "grok2api"
+                        ok, msg = upload_to_grok2api(account, api_url=api_url, app_key=app_key)
+                        results.append({"name": "grok2api", "ok": ok, "msg": msg})
+                        if ok:
+                            cpa_url = (
+                                str(config_store.get("cliproxyapi_base_url", "") or "").strip()
+                                or str(config_store.get("cpa_api_url", "") or "").strip()
+                            )
+                            if cpa_url:
+                                cpa_visible_grok2api_url = (
+                                    str(config_store.get("grok2api_cpa_url", "") or "").strip()
+                                    or api_url
+                                )
+                                bridge_ok, bridge_msg = ensure_grok2api_openai_compat_in_cpa(
+                                    grok2api_url=cpa_visible_grok2api_url,
+                                )
+                                results.append({"name": "CPA/CLIProxyAPI(grok2api)", "ok": bridge_ok, "msg": bridge_msg})
 
                 elif row.platform == "kiro":
                     from core.config_store import config_store

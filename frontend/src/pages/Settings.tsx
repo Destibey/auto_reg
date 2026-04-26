@@ -298,7 +298,9 @@ const TAB_ITEMS = [
         fields: [
           { key: 'grok2api_url', label: 'API URL', placeholder: 'http://127.0.0.1:7860' },
           { key: 'grok2api_app_key', label: 'App Key', secret: true },
-          { key: 'grok2api_pool', label: 'Token Pool', placeholder: 'ssoBasic 或 ssoSuper' },
+          { key: 'grok2api_api_key', label: 'API 调用密钥（可选）', secret: true },
+          { key: 'grok2api_cpa_url', label: 'CPA 访问 URL（可选）', placeholder: 'http://host.docker.internal:8011' },
+          { key: 'grok2api_pool', label: 'Token Pool', placeholder: 'basic / super / heavy（兼容 ssoBasic）' },
           { key: 'grok2api_quota', label: 'Quota（可选）', placeholder: '留空按池默认值' },
         ],
       },

@@ -464,6 +464,7 @@ def _ensure_grok2api_runtime_config(repo: Path):
     data_dir.mkdir(parents=True, exist_ok=True)
     config_file = data_dir / "config.toml"
     app_key = _get_setting("grok2api_app_key", "grok2api")
+    api_key = _get_setting("grok2api_api_key", "")
     default_config = repo / "config.defaults.toml"
 
     if not config_file.exists():
@@ -477,6 +478,7 @@ def _ensure_grok2api_runtime_config(repo: Path):
     in_app = False
     app_section_found = False
     app_key_written = False
+    api_key_written = False
 
     for line in lines:
         stripped = line.strip()
@@ -484,6 +486,9 @@ def _ensure_grok2api_runtime_config(repo: Path):
             if in_app and not app_key_written:
                 updated_lines.append(f'app_key = "{app_key}"')
                 app_key_written = True
+            if in_app and not api_key_written:
+                updated_lines.append(f'api_key = "{api_key}"')
+                api_key_written = True
             in_app = stripped == "[app]"
             app_section_found = app_section_found or in_app
             updated_lines.append(line)
@@ -495,6 +500,12 @@ def _ensure_grok2api_runtime_config(repo: Path):
             app_key_written = True
             continue
 
+        if in_app and stripped.startswith("api_key"):
+            indent = line[: len(line) - len(line.lstrip())]
+            updated_lines.append(f'{indent}api_key = "{api_key}"')
+            api_key_written = True
+            continue
+
         updated_lines.append(line)
 
     if not app_section_found:
@@ -502,8 +513,12 @@ def _ensure_grok2api_runtime_config(repo: Path):
             updated_lines.append("")
         updated_lines.append("[app]")
         updated_lines.append(f'app_key = "{app_key}"')
+        updated_lines.append(f'api_key = "{api_key}"')
     elif in_app and not app_key_written:
         updated_lines.append(f'app_key = "{app_key}"')
+        app_key_written = True
+    if in_app and not api_key_written:
+        updated_lines.append(f'api_key = "{api_key}"')
 
     config_file.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
 

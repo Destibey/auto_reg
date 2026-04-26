@@ -3,6 +3,7 @@ import { Segmented, Space, Tag, Typography } from 'antd'
 import {
   CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY,
   CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
+  CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP,
   CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN,
   type ChatGPTRegistrationMode,
 } from '@/lib/chatgptRegistrationMode'
@@ -34,6 +35,11 @@ export function ChatGPTRegistrationModeSwitch({
       color: 'processing',
       desc: '浏览器人工接管会固定打开 Camoufox ChatGPT 直接注册页，等待你手动完成注册；当前只保存邮箱和密码，不自动取 token。',
     },
+    [CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP]: {
+      tag: '自动辅助',
+      color: 'warning',
+      desc: 'Camoufox 自动辅助会填写邮箱、密码、验证码、姓名和年龄；遇到手机号直接失败，遇到确认勾选或人工验证会等待你接管。',
+    },
   }[mode]
 
   return (
@@ -48,6 +54,10 @@ export function ChatGPTRegistrationModeSwitch({
             {
               label: '浏览器接管',
               value: CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
+            },
+            {
+              label: 'Camoufox 自动辅助',
+              value: CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP,
             },
           ]}
         />

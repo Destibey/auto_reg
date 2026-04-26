@@ -54,11 +54,25 @@ class FakePage:
         return None
 
 
+class FakeAssistedPage(FakePage):
+    def __init__(self, result):
+        super().__init__()
+        self.result = result
+        self.payloads = []
+
+    def evaluate(self, script, *args):
+        self.evaluated_scripts.append(script)
+        if args and isinstance(args[0], dict):
+            self.payloads.append(args[0])
+            return self.result
+        return super().evaluate(script, *args)
+
+
 class FakeBrowserSession:
     provider = "fake"
 
-    def __init__(self):
-        self.page = FakePage()
+    def __init__(self, page=None):
+        self.page = page or FakePage()
         self.closed = False
 
     def close(self):
@@ -159,6 +173,116 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertEqual(result.metadata["registration_stage"], "signup_only")
         engine.oauth_manager.start_oauth.assert_not_called()
         wait_for_token_callback.assert_not_called()
+
+    def test_assisted_signup_uses_assisted_wait_and_saves_signup_only_metadata(self):
+        session = FakeBrowserSession()
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_assisted_signup": True,
+                "chatgpt_manual_handoff_timeout_seconds": 5,
+                "chatgpt_manual_clipboard_sequence": False,
+            },
+        )
+        engine.password = "pw-demo"
+
+        with mock.patch.object(engine, "_open_browser_session", return_value=session):
+            with mock.patch.object(
+                engine,
+                "_wait_for_assisted_signup_completion",
+                return_value=(True, "assisted signup ok"),
+            ) as assisted_wait:
+                with mock.patch.object(engine, "_wait_for_manual_completion") as manual_wait:
+                    result = engine.run()
+
+        self.assertTrue(result.success)
+        self.assertEqual(session.page.goto_urls, [DEFAULT_CHATGPT_MANUAL_SIGNUP_URL])
+        self.assertEqual(result.account_id, "")
+        self.assertEqual(result.access_token, "")
+        self.assertEqual(result.refresh_token, "")
+        self.assertEqual(result.metadata["chatgpt_registration_mode"], "camoufox_assisted_signup")
+        self.assertEqual(result.metadata["manual_handoff_stage"], "signup_only")
+        self.assertEqual(result.metadata["registration_stage"], "signup_only")
+        self.assertFalse(result.metadata["token_acquired"])
+        assisted_wait.assert_called_once_with(session)
+        manual_wait.assert_not_called()
+
+    def test_assisted_signup_fills_known_fields_and_waits_for_checkbox(self):
+        page = FakeAssistedPage(
+            {
+                "actions": [
+                    "filled_email",
+                    "filled_password",
+                    "filled_code",
+                    "filled_name",
+                    "filled_age",
+                ],
+                "checkboxBlocked": True,
+            }
+        )
+        session = FakeBrowserSession(page=page)
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeCodeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_manual_handoff_timeout_seconds": 5,
+                "chatgpt_manual_clipboard_sequence": False,
+            },
+        )
+        engine.email = "manual@example.com"
+        engine.email_info = {"service_id": "mail-1"}
+        engine.password = "pw-demo"
+
+        with mock.patch.object(
+            engine,
+            "_manual_signup_user_info",
+            return_value={"name": "Jane Miller", "age": "28"},
+        ):
+            changed = engine._assist_signup_pages(session)
+
+        self.assertTrue(changed)
+        self.assertEqual(page.payloads[-1]["email"], "manual@example.com")
+        self.assertEqual(page.payloads[-1]["password"], "pw-demo")
+        self.assertEqual(page.payloads[-1]["code"], "123456")
+        self.assertEqual(page.payloads[-1]["name"], "Jane Miller")
+        self.assertEqual(page.payloads[-1]["age"], "28")
+        self.assertTrue(any("勾选" in log for log in engine.logs))
+
+    def test_assisted_wait_attempts_browser_automation_before_success(self):
+        session = FakeBrowserSession()
+        engine = self._make_engine()
+
+        with mock.patch.object(
+            engine,
+            "_collect_page_states",
+            side_effect=[
+                [ManualPageState(url="https://auth.openai.com/create-account", body_text="Create account")],
+                [ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
+            ],
+        ):
+            with mock.patch.object(engine, "_assist_signup_pages", return_value=True) as assist:
+                ok, payload = engine._wait_for_assisted_signup_completion(session)
+
+        self.assertTrue(ok)
+        self.assertIn("signup-only", payload)
+        assist.assert_called_once_with(session)
+
+    def test_assisted_wait_fails_on_phone_before_automation(self):
+        session = FakeBrowserSession()
+        engine = self._make_engine()
+
+        with mock.patch.object(
+            engine,
+            "_collect_page_states",
+            return_value=[ManualPageState(url="https://auth.openai.com/add-phone")],
+        ):
+            with mock.patch.object(engine, "_assist_signup_pages") as assist:
+                ok, payload = engine._wait_for_assisted_signup_completion(session)
+
+        self.assertFalse(ok)
+        self.assertIn("手机号", payload)
+        assist.assert_not_called()
 
     def test_existing_account_token_acquisition_opens_oauth_directly(self):
         session = FakeBrowserSession()

@@ -32,7 +32,7 @@ import {
 import { ChatGPTRegistrationModeSwitch } from '@/components/ChatGPTRegistrationModeSwitch'
 import { TaskLogPanel } from '@/components/TaskLogPanel'
 import { usePersistentChatGPTRegistrationMode } from '@/hooks/usePersistentChatGPTRegistrationMode'
-import { CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF } from '@/lib/chatgptRegistrationMode'
+import { isChatGPTBrowserSignupMode } from '@/lib/chatgptRegistrationMode'
 import { parseBooleanConfigValue } from '@/lib/configValueParsers'
 import { buildChatGPTRegistrationRequestAdapter } from '@/lib/chatgptRegistrationRequestAdapter'
 import { apiFetch } from '@/lib/utils'
@@ -630,7 +630,7 @@ export default function Accounts() {
       const cfg = await apiFetch('/config')
       const executorType =
         currentPlatform === 'chatgpt' &&
-        chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+        isChatGPTBrowserSignupMode(chatgptRegistrationMode)
           ? 'protocol'
           : normalizeExecutorForPlatform(currentPlatform, cfg.default_executor)
       const registerExtra = {

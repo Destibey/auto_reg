@@ -11,11 +11,19 @@ from core.base_platform import Account, AccountStatus
 CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN = "refresh_token"
 CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY = "access_token_only"
 CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF = "browser_manual_handoff"
+CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP = "camoufox_assisted_signup"
 DEFAULT_CHATGPT_REGISTRATION_MODE = CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN
 
 
 def normalize_chatgpt_registration_mode(value) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized in {
+        CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP,
+        "camoufox_assisted",
+        "assisted_signup",
+        "browser_assisted",
+    }:
+        return CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP
     if normalized in {
         CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
         "browser_manual",
@@ -170,10 +178,33 @@ class BrowserManualHandoffChatGPTRegistrationAdapter(BaseChatGPTRegistrationMode
         )
 
 
+class CamoufoxAssistedSignupChatGPTRegistrationAdapter(BrowserManualHandoffChatGPTRegistrationAdapter):
+    mode = CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP
+
+    def _create_engine(self, context: ChatGPTRegistrationContext):
+        extra_config = dict(context.extra_config or {})
+        extra_config["chatgpt_assisted_signup"] = True
+        assisted_context = ChatGPTRegistrationContext(
+            email_service=context.email_service,
+            proxy_url=context.proxy_url,
+            callback_logger=context.callback_logger,
+            email=context.email,
+            password=context.password,
+            browser_mode=context.browser_mode,
+            max_retries=context.max_retries,
+            extra_config=extra_config,
+            task_control=context.task_control,
+            task_attempt_token=context.task_attempt_token,
+        )
+        return super()._create_engine(assisted_context)
+
+
 def build_chatgpt_registration_mode_adapter(
     extra: Optional[dict],
 ) -> BaseChatGPTRegistrationModeAdapter:
     mode = resolve_chatgpt_registration_mode(extra)
+    if mode == CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP:
+        return CamoufoxAssistedSignupChatGPTRegistrationAdapter()
     if mode == CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF:
         return BrowserManualHandoffChatGPTRegistrationAdapter()
     if mode == CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY:

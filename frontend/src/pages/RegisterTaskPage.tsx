@@ -22,7 +22,10 @@ import {
 import { ChatGPTRegistrationModeSwitch } from '@/components/ChatGPTRegistrationModeSwitch'
 import { TaskLogPanel } from '@/components/TaskLogPanel'
 import { usePersistentChatGPTRegistrationMode } from '@/hooks/usePersistentChatGPTRegistrationMode'
-import { CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF } from '@/lib/chatgptRegistrationMode'
+import {
+  CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP,
+  isChatGPTBrowserSignupMode,
+} from '@/lib/chatgptRegistrationMode'
 import { parseBooleanConfigValue } from '@/lib/configValueParsers'
 import { buildChatGPTRegistrationRequestAdapter } from '@/lib/chatgptRegistrationRequestAdapter'
 import { getExecutorOptions, normalizeExecutorForPlatform } from '@/lib/platformExecutorOptions'
@@ -217,7 +220,7 @@ export default function RegisterTaskPage() {
         proxy: values.proxy || null,
         executor_type:
           values.platform === 'chatgpt' &&
-          chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+          isChatGPTBrowserSignupMode(chatgptRegistrationMode)
             ? 'protocol'
             : values.executor_type,
         captcha_solver: values.captcha_solver,
@@ -247,12 +250,11 @@ export default function RegisterTaskPage() {
   const captchaSolver = Form.useWatch('captcha_solver', form)
   const platform = Form.useWatch('platform', form)
   const executorOptions = getExecutorOptions(platform)
-  const isChatGPTManualHandoff =
-    platform === 'chatgpt' &&
-    chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+  const isChatGPTBrowserMode =
+    platform === 'chatgpt' && isChatGPTBrowserSignupMode(chatgptRegistrationMode)
 
   useEffect(() => {
-    if (isChatGPTManualHandoff) {
+    if (isChatGPTBrowserMode) {
       form.setFieldValue('executor_type', 'protocol')
       return
     }
@@ -261,7 +263,7 @@ export default function RegisterTaskPage() {
     if (currentExecutor !== normalizedExecutor) {
       form.setFieldValue('executor_type', normalizedExecutor)
     }
-  }, [form, platform, isChatGPTManualHandoff])
+  }, [form, platform, isChatGPTBrowserMode])
 
   return (
     <div style={{ maxWidth: 800 }}>
@@ -305,7 +307,7 @@ export default function RegisterTaskPage() {
               ]}
             />
           </Form.Item>
-          {isChatGPTManualHandoff ? (
+          {isChatGPTBrowserMode ? (
             <>
               <Form.Item name="executor_type" hidden>
                 <Input />
@@ -314,8 +316,8 @@ export default function RegisterTaskPage() {
                 type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
-                message="人工接管模式不使用执行器选择"
-                description="该模式固定启动 Camoufox 打开 ChatGPT 直接注册页并等待你手动完成注册；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
+                message="Camoufox 浏览器模式不使用执行器选择"
+                description="该模式固定启动 Camoufox 打开 ChatGPT 直接注册页；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
               />
             </>
           ) : (
@@ -323,7 +325,7 @@ export default function RegisterTaskPage() {
               <Select options={executorOptions} />
             </Form.Item>
           )}
-          {platform === 'chatgpt' && !isChatGPTManualHandoff && (
+          {platform === 'chatgpt' && !isChatGPTBrowserMode && (
             <Alert
               type="info"
               showIcon
@@ -366,22 +368,37 @@ export default function RegisterTaskPage() {
             </Form.Item>
           )}
           {platform === 'chatgpt' &&
-            chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF && (
+            isChatGPTBrowserMode && (
               <Alert
-                type="warning"
+                type={
+                  chatgptRegistrationMode ===
+                  CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP
+                    ? 'info'
+                    : 'warning'
+                }
                 showIcon
                 style={{ marginBottom: 16 }}
-                message="浏览器人工接管模式"
-                description="系统只打开 Camoufox ChatGPT 直接注册页；验证码、Cloudflare、手机号页都需要你本人处理。注册任务只保存邮箱和密码，不会打开 OAuth 授权页，也不会取 token。"
+                message={
+                  chatgptRegistrationMode ===
+                  CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP
+                    ? 'Camoufox 自动辅助模式'
+                    : '浏览器人工接管模式'
+                }
+                description={
+                  chatgptRegistrationMode ===
+                  CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP
+                    ? '系统会在 Camoufox 中自动填写邮箱、密码、验证码、姓名和年龄；遇到手机号直接失败，遇到确认勾选或人工验证会等待你接管。注册任务只保存邮箱和密码，不会取 token。'
+                    : '系统只打开 Camoufox ChatGPT 直接注册页；验证码、Cloudflare、手机号页都需要你本人处理。注册任务只保存邮箱和密码，不会打开 OAuth 授权页，也不会取 token。'
+                }
               />
             )}
         </Card>
 
         {platform === 'chatgpt' &&
-          chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF && (
-            <Card title="ChatGPT 浏览器人工接管" style={{ marginBottom: 16 }}>
+          isChatGPTBrowserMode && (
+            <Card title="ChatGPT Camoufox 浏览器模式" style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                使用本地 Camoufox 隔离有头浏览器。AutoReg 只负责打开 ChatGPT 直接注册页、提示邮箱验证码并等待你完成注册；页面内操作由你手动完成。
+                使用本地 Camoufox 隔离有头浏览器。人工接管模式只打开页面并提示资料；自动辅助模式会尝试填写固定注册字段，遇到确认勾选、人工验证或异常页面时保留人工接管。
               </Text>
               <Form.Item name="chatgpt_manual_browser_provider" hidden>
                 <Input />

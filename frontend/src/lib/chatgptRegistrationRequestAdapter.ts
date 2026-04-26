@@ -1,6 +1,7 @@
 import {
   CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY,
   CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
+  CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP,
   CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN,
   type ChatGPTRegistrationMode,
 } from '@/lib/chatgptRegistrationMode'
@@ -66,11 +67,29 @@ class BrowserManualHandoffChatGPTRegistrationRequestAdapter
   }
 }
 
+class CamoufoxAssistedSignupChatGPTRegistrationRequestAdapter
+  implements ChatGPTRegistrationRequestAdapter
+{
+  readonly mode = CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP
+
+  extendExtra(extra: RegistrationExtra): RegistrationExtra {
+    return {
+      ...buildSignupOnlyExtra(extra, this.mode),
+      chatgpt_manual_browser_provider: 'camoufox',
+      chatgpt_assisted_signup: true,
+    }
+  }
+}
+
 export function buildChatGPTRegistrationRequestAdapter(
   platform: string | undefined,
   mode: ChatGPTRegistrationMode,
 ): ChatGPTRegistrationRequestAdapter | null {
   if (platform !== 'chatgpt') return null
+
+  if (mode === CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP) {
+    return new CamoufoxAssistedSignupChatGPTRegistrationRequestAdapter()
+  }
 
   if (mode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF) {
     return new BrowserManualHandoffChatGPTRegistrationRequestAdapter()

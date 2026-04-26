@@ -122,6 +122,8 @@ class BrowserManualHandoffRegistrationEngine:
         self._last_clipboard_value = ""
         self._saw_manual_credential_paste = False
         self._manual_user_info: dict[str, str] = {}
+        self._assisted_verification_code = ""
+        self._assisted_logged_events: set[str] = set()
 
     def _log(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -177,6 +179,14 @@ class BrowserManualHandoffRegistrationEngine:
 
     def _manual_token_callback_enabled(self) -> bool:
         return self._bool_config("chatgpt_manual_enable_token_callback", False)
+
+    def _assisted_signup_enabled(self) -> bool:
+        return self._bool_config("chatgpt_assisted_signup", False)
+
+    def _registration_mode_name(self) -> str:
+        if self._assisted_signup_enabled():
+            return "camoufox_assisted_signup"
+        return "browser_manual_handoff"
 
     def _checkpoint(self) -> None:
         if self.task_control is None:
@@ -853,6 +863,295 @@ class BrowserManualHandoffRegistrationEngine:
             ]
         )
 
+    def _poll_email_code_for_assisted_signup(self) -> str:
+        if self._assisted_verification_code:
+            return self._assisted_verification_code
+        if not hasattr(self.email_service, "get_verification_code"):
+            return ""
+        self._checkpoint()
+        poll_interval = self._int_config("chatgpt_manual_email_poll_interval_seconds", 10)
+        now = time.time()
+        if now - self._last_otp_poll < poll_interval:
+            return ""
+        self._last_otp_poll = now
+        try:
+            code = self.email_service.get_verification_code(
+                email=self.email,
+                email_id=(self.email_info or {}).get("service_id"),
+                timeout=self._int_config("chatgpt_manual_email_poll_timeout_seconds", 3),
+                exclude_codes=self._used_verification_codes,
+            )
+        except Exception:
+            return ""
+        if not code:
+            return ""
+        code_text = str(code).strip()
+        if not code_text or code_text in self._used_verification_codes:
+            return ""
+        self._used_verification_codes.add(code_text)
+        self._assisted_verification_code = code_text
+        self._log(f"自动辅助验证码: {code_text}（将尝试自动填入；也已保留人工接管兜底）")
+        user_info = self._manual_signup_user_info()
+        self._log(
+            f"自动辅助资料: 姓名={user_info['name']}, 年龄={user_info['age']}"
+        )
+        self._append_manual_clipboard_items(
+            [
+                ("验证码", code_text),
+                ("姓名", user_info["name"]),
+                ("年龄", user_info["age"]),
+            ]
+        )
+        return code_text
+
+    def _log_assisted_event_once(self, key: str, message: str, level: str = "info") -> None:
+        if key in self._assisted_logged_events:
+            return
+        self._assisted_logged_events.add(key)
+        self._log(message, level)
+
+    def _log_assisted_actions(self, result: dict) -> None:
+        actions = set(result.get("actions") or [])
+        action_messages = {
+            "filled_email": "自动辅助已填写邮箱。",
+            "filled_password": "自动辅助已填写密码。",
+            "filled_code": "自动辅助已填写邮箱验证码。",
+            "filled_name": "自动辅助已填写姓名。",
+            "filled_age": "自动辅助已填写年龄。",
+            "clicked_continue": "自动辅助已点击继续/下一步。",
+        }
+        for action, message in action_messages.items():
+            if action in actions:
+                self._log_assisted_event_once(action, message)
+        if result.get("checkboxBlocked"):
+            self._log_assisted_event_once(
+                "checkbox_blocked",
+                "检测到注册资料页需要人工勾选确认；已停止自动点击下一步，请你手动勾选并继续。",
+                "warning",
+            )
+        if result.get("challengeDetected"):
+            self._log_assisted_event_once(
+                "challenge_detected",
+                "检测到 CAPTCHA 或人工验证挑战；自动辅助不会处理该步骤，请你在浏览器中手动完成。",
+                "warning",
+            )
+
+    def _assist_signup_pages(self, session: ManualBrowserSession) -> bool:
+        user_info = self._manual_signup_user_info()
+        payload = {
+            "email": self.email or "",
+            "password": self.password or "",
+            "code": self._poll_email_code_for_assisted_signup(),
+            "name": user_info.get("name") or "",
+            "age": user_info.get("age") or "",
+        }
+        changed = False
+        for page in self._iter_session_pages(session):
+            try:
+                result = self._assist_signup_page(page, payload)
+            except Exception:
+                continue
+            if not isinstance(result, dict):
+                continue
+            self._log_assisted_actions(result)
+            if result.get("actions"):
+                changed = True
+        return changed
+
+    def _assist_signup_page(self, page, payload: dict) -> dict:
+        script = """
+(payload) => {
+  const result = { actions: [], checkboxBlocked: false, challengeDetected: false };
+  const lower = value => String(value || '').toLowerCase();
+  const roots = [];
+  const visitRoot = root => {
+    if (!root || roots.includes(root)) return;
+    roots.push(root);
+    const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
+    all.forEach(node => {
+      if (node.shadowRoot) visitRoot(node.shadowRoot);
+    });
+  };
+  visitRoot(document);
+  const collect = selector => {
+    const nodes = [];
+    roots.forEach(root => {
+      try {
+        root.querySelectorAll(selector).forEach(node => nodes.push(node));
+      } catch (_err) {}
+    });
+    return nodes;
+  };
+  const visible = element => {
+    if (!element || element.disabled || element.getAttribute('aria-disabled') === 'true') return false;
+    const style = window.getComputedStyle(element);
+    if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const attrText = element => {
+    if (!element) return '';
+    const parts = [
+      element.getAttribute('aria-label'),
+      element.getAttribute('placeholder'),
+      element.getAttribute('name'),
+      element.getAttribute('id'),
+      element.getAttribute('autocomplete'),
+      element.getAttribute('inputmode'),
+      element.getAttribute('type'),
+    ];
+    const id = element.getAttribute('id');
+    if (id) {
+      collect(`label[for="${CSS.escape(id)}"]`).forEach(label => parts.push(label.innerText));
+    }
+    const label = element.closest ? element.closest('label') : null;
+    if (label) parts.push(label.innerText);
+    const parent = element.parentElement;
+    if (parent) parts.push(String(parent.innerText || '').slice(0, 160));
+    return lower(parts.filter(Boolean).join(' '));
+  };
+  const controls = collect('input, textarea, [contenteditable="true"]').filter(visible);
+  const setValue = (element, value) => {
+    if (!element || !value) return false;
+    const current = 'value' in element ? String(element.value || '') : String(element.textContent || '');
+    if (current.trim() === String(value).trim()) return false;
+    element.focus();
+    if ('value' in element) {
+      const proto = Object.getPrototypeOf(element);
+      const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (descriptor && descriptor.set) {
+        descriptor.set.call(element, value);
+      } else {
+        element.value = value;
+      }
+    } else {
+      element.textContent = value;
+    }
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  };
+  const emptyEnough = element => {
+    const value = 'value' in element ? element.value : element.textContent;
+    return !String(value || '').trim();
+  };
+  const currentValue = element => {
+    return String(('value' in element ? element.value : element.textContent) || '').trim();
+  };
+  const fillFirst = (action, value, predicate) => {
+    if (!value) return false;
+    const target = controls.find(element => emptyEnough(element) && predicate(element, attrText(element)));
+    if (!target) return false;
+    if (setValue(target, value)) {
+      result.actions.push(action);
+      return true;
+    }
+    return false;
+  };
+  const hasFilled = (value, predicate) => {
+    if (!value) return false;
+    return controls.some(element => {
+      if (!predicate(element, attrText(element))) return false;
+      return currentValue(element).includes(String(value).trim());
+    });
+  };
+  const bodyText = lower(document.body ? document.body.innerText : '');
+  if (/(captcha|hcaptcha|recaptcha|turnstile|are you human|verify you are human)/.test(bodyText)) {
+    result.challengeDetected = true;
+  }
+  fillFirst('filled_email', payload.email, (element, text) => {
+    const type = lower(element.getAttribute('type'));
+    return type === 'email' || (/(email|identifier|username)/.test(text) && !/(password|code|otp)/.test(text));
+  });
+  fillFirst('filled_password', payload.password, element => lower(element.getAttribute('type')) === 'password');
+  if (payload.code) {
+    const codeChars = String(payload.code).split('');
+    const oneCharFields = controls.filter(element => {
+      const text = attrText(element);
+      const maxLength = Number(element.getAttribute('maxlength') || element.maxLength || 0);
+      const inputMode = lower(element.getAttribute('inputmode'));
+      return emptyEnough(element)
+        && (maxLength === 1 || inputMode === 'numeric')
+        && !/(age|name|password|email)/.test(text);
+    });
+    if (oneCharFields.length >= codeChars.length) {
+      oneCharFields.slice(0, codeChars.length).forEach((element, index) => setValue(element, codeChars[index]));
+      result.actions.push('filled_code');
+    } else {
+      fillFirst('filled_code', payload.code, (element, text) => {
+        const maxLength = Number(element.getAttribute('maxlength') || element.maxLength || 0);
+        return /(code|otp|verification|one-time|one time)/.test(text) || maxLength >= 6;
+      });
+    }
+  }
+  const nameParts = String(payload.name || '').split(/\\s+/).filter(Boolean);
+  const firstName = nameParts[0] || payload.name;
+  const lastName = nameParts.slice(1).join(' ');
+  const filledFirst = fillFirst('filled_name', firstName, (_element, text) => /(first name|given name)/.test(text));
+  const filledLast = fillFirst('filled_name', lastName, (_element, text) => /(last name|family name|surname)/.test(text));
+  if (!filledFirst && !filledLast) {
+    fillFirst('filled_name', payload.name, (_element, text) => {
+      return /(full name|your name|display name|name)/.test(text) && !/(username|email|password|domain)/.test(text);
+    });
+  }
+  fillFirst('filled_age', payload.age, (element, text) => {
+    const type = lower(element.getAttribute('type'));
+    return (type === 'number' || /(age|your age)/.test(text)) && !/(birth|birthday|date|day|month|year|code|otp)/.test(text);
+  });
+  const codeAlreadyFilled = payload.code && controls.map(currentValue).join('').includes(String(payload.code));
+  const nameAlreadyFilled = payload.name && String(payload.name).split(/\\s+/).filter(Boolean).every(part => {
+    return controls.map(currentValue).join(' ').includes(part);
+  });
+  const ageAlreadyFilled = hasFilled(payload.age, (element, text) => {
+    const type = lower(element.getAttribute('type'));
+    return (type === 'number' || /(age|your age)/.test(text)) && !/(birth|birthday|date|day|month|year|code|otp)/.test(text);
+  });
+  const checkboxes = collect('input[type="checkbox"], [role="checkbox"]').filter(visible);
+  const unchecked = checkboxes.some(element => {
+    if (element.matches && element.matches('input[type="checkbox"]')) return !element.checked;
+    return lower(element.getAttribute('aria-checked')) !== 'true';
+  });
+  if (unchecked && (
+    result.actions.includes('filled_name') ||
+    result.actions.includes('filled_age') ||
+    nameAlreadyFilled ||
+    ageAlreadyFilled
+  )) {
+    result.checkboxBlocked = true;
+  }
+  const readyToContinue =
+    result.actions.length > 0 ||
+    hasFilled(payload.email, (element, text) => {
+      const type = lower(element.getAttribute('type'));
+      return type === 'email' || (/(email|identifier|username)/.test(text) && !/(password|code|otp)/.test(text));
+    }) ||
+    hasFilled(payload.password, element => lower(element.getAttribute('type')) === 'password') ||
+    codeAlreadyFilled ||
+    nameAlreadyFilled ||
+    ageAlreadyFilled;
+  const canClick = readyToContinue && !result.checkboxBlocked && !result.challengeDetected;
+  if (canClick) {
+    const button = collect('button, [role="button"], input[type="submit"], input[type="button"]').find(element => {
+      if (!visible(element)) return false;
+      const text = lower([
+        element.innerText,
+        element.getAttribute('value'),
+        element.getAttribute('aria-label'),
+        element.getAttribute('name'),
+      ].filter(Boolean).join(' '));
+      return /(continue|next|submit|verify|sign up|create account|继续|下一步|提交|验证|注册)/.test(text);
+    });
+    if (button) {
+      button.click();
+      result.actions.push('clicked_continue');
+    }
+  }
+  return result;
+}
+"""
+        result = page.evaluate(script, payload)
+        return result if isinstance(result, dict) else {}
+
     def _exchange_callback(self, callback_url: str, oauth_start: OAuthStart) -> dict:
         return self.oauth_manager.handle_callback(
             callback_url,
@@ -886,6 +1185,36 @@ class BrowserManualHandoffRegistrationEngine:
             self._poll_email_code_for_user()
             time.sleep(1)
         return False, "等待人工完成注册超时"
+
+    def _wait_for_assisted_signup_completion(self, session: ManualBrowserSession) -> tuple[bool, str]:
+        timeout = self._int_config("chatgpt_manual_handoff_timeout_seconds", 900)
+        self._log(
+            f"Camoufox 自动辅助注册启动，最多 {timeout}s；会自动填写邮箱、密码、验证码、姓名和年龄，遇到手机号会直接失败。"
+        )
+        deadline = time.time() + timeout
+        seen_signup_flow = False
+        warned_existing_session = False
+        while time.time() < deadline:
+            self._checkpoint()
+            states = self._collect_page_states(session)
+            if not states:
+                return False, "自动辅助浏览器已关闭或不可访问，注册流程已停止。"
+            if self._requires_phone(states):
+                return False, "OpenAI 要求绑定手机号；自动辅助注册已按策略停止。"
+            if self._looks_like_signup_flow(states) or self._saw_manual_credential_paste:
+                seen_signup_flow = True
+            if self._looks_like_chatgpt_app(states):
+                if seen_signup_flow:
+                    return True, "检测到普通 ChatGPT 注册/登录已进入应用。已按 signup-only 策略停止，不自动进入 OAuth 取 token。"
+                if not warned_existing_session:
+                    self._log("检测到已有 ChatGPT 登录态，暂不判定为本次注册成功；请先退出旧账号后继续注册。", "warning")
+                    warned_existing_session = True
+            self._install_clipboard_paste_watcher(session)
+            self._advance_clipboard_from_visible_inputs(session)
+            if self._assist_signup_pages(session):
+                seen_signup_flow = True
+            time.sleep(1)
+        return False, "等待自动辅助注册完成超时"
 
     def _wait_for_token_callback(
         self, session: ManualBrowserSession, oauth_start: OAuthStart
@@ -971,11 +1300,12 @@ class BrowserManualHandoffRegistrationEngine:
                 pass
 
     def run(self) -> RegistrationResult:
-        result = RegistrationResult(success=False, logs=self.logs, source="browser_manual_handoff")
+        mode_name = self._registration_mode_name()
+        result = RegistrationResult(success=False, logs=self.logs, source=mode_name)
         session = None
         try:
             self._log("=" * 60)
-            self._log("ChatGPT browser_manual_handoff 注册流程启动")
+            self._log(f"ChatGPT {mode_name} 注册流程启动")
             self._log("=" * 60)
             self._checkpoint()
 
@@ -995,7 +1325,10 @@ class BrowserManualHandoffRegistrationEngine:
             self._log(f"打开 ChatGPT 直接注册入口: {signup_url}")
             session.page.goto(signup_url, wait_until="domcontentloaded")
 
-            ok, payload = self._wait_for_manual_completion(session)
+            if self._assisted_signup_enabled():
+                ok, payload = self._wait_for_assisted_signup_completion(session)
+            else:
+                ok, payload = self._wait_for_manual_completion(session)
             if not ok:
                 result.error_message = str(payload)
                 self._log(result.error_message, "error")
@@ -1010,20 +1343,20 @@ class BrowserManualHandoffRegistrationEngine:
             result.email = email
             result.password = password
             result.metadata = {
-                "chatgpt_registration_mode": "browser_manual_handoff",
+                "chatgpt_registration_mode": mode_name,
                 "manual_handoff_stage": "signup_only",
                 "chatgpt_manual_enable_token_callback": False,
                 "registration_stage": "signup_only",
                 "token_acquired": False,
             }
             self._log(str(payload))
-            self._log("browser_manual_handoff 普通注册完成，仅保存邮箱和密码")
+            self._log(f"{mode_name} 普通注册完成，仅保存邮箱和密码")
             return result
         except TaskInterruption:
             raise
         except Exception as e:
             result.error_message = str(e)
-            self._log(f"browser_manual_handoff 失败: {e}", "error")
+            self._log(f"{mode_name} 失败: {e}", "error")
             return result
         finally:
             try:

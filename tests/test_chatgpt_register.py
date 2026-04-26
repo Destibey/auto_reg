@@ -232,7 +232,7 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         create_account.assert_not_called()
         restart_login.assert_not_called()
         complete_exchange.assert_not_called()
-        suggest.assert_called_once()
+        suggest.assert_not_called()
 
     def test_run_skips_registration_steps_for_existing_account(self):
         engine = self._make_engine()

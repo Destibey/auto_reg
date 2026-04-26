@@ -230,8 +230,9 @@ class RefreshTokenRegistrationEngine:
     def _phone_required_error_message(self) -> str:
         return (
             "注册失败：OpenAI 要求绑定手机号。已停止后续 create_account，"
-            "避免继续触发 invalid_auth_step。建议更换住宅代理 IP、邮箱域名，"
-            "降低注册频率，或改用支持手机号验证的注册链路。"
+            "避免继续触发 invalid_auth_step。该状态通常与协议注册链路、"
+            "浏览器/设备指纹、IP 信誉或注册频率有关；当前 refresh-token "
+            "链路不自动处理手机号验证。"
         )
 
     def _log_response_diagnostics(self, label: str, response) -> None:
@@ -1910,8 +1911,6 @@ class RefreshTokenRegistrationEngine:
                 if self._post_otp_requires_phone():
                     result.error_message = self._phone_required_error_message()
                     self._log(result.error_message, "error")
-                    if self.email:
-                        self._check_email_domain_and_suggest()
                     return result
 
                 self._log("9. 创建用户账户...")

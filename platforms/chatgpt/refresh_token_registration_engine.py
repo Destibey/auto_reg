@@ -178,6 +178,54 @@ class RefreshTokenRegistrationEngine:
         else:
             logger.info(message)
 
+    def _email_service_name(self) -> str:
+        service_type = getattr(self.email_service, "service_type", None)
+        return str(getattr(service_type, "value", service_type) or "unknown")
+
+    def _log_runtime_diagnostics(self) -> None:
+        """记录不会泄漏凭据的运行边界，避免误解 headed/浏览器环境。"""
+        self._log(
+            "诊断: "
+            f"executor_type={self.browser_mode}; "
+            "ChatGPT 注册链路=协议请求 + Sentinel Browser; "
+            "管理界面浏览器不会被复用"
+        )
+        self._log(
+            "诊断: "
+            f"邮箱服务={self._email_service_name()}; "
+            f"代理={'已配置' if self.proxy_url else '未配置'}"
+        )
+
+    def _log_email_diagnostics(self) -> None:
+        if not self.email or "@" not in self.email:
+            return
+        domain = self.email.rsplit("@", 1)[-1].lower()
+        self._log(f"诊断: 注册邮箱域名={domain}")
+
+    def _log_response_diagnostics(self, label: str, response) -> None:
+        """只记录可关联的响应元信息，不记录 cookie/token/body 全量内容。"""
+        safe_header_names = (
+            "cf-ray",
+            "x-request-id",
+            "request-id",
+            "content-type",
+            "server",
+            "openai-processing-ms",
+        )
+        headers = getattr(response, "headers", {}) or {}
+        header_parts = []
+        for name in safe_header_names:
+            value = headers.get(name)
+            if value is None:
+                value = headers.get(name.title())
+            value = str(value or "").strip()
+            if value:
+                header_parts.append(f"{name}={value[:160]}")
+        suffix = f"; {'; '.join(header_parts)}" if header_parts else ""
+        self._log(
+            f"{label}响应诊断: status={getattr(response, 'status_code', 'unknown')}{suffix}"
+        )
+
     def _generate_password(self, length: int = DEFAULT_PASSWORD_LENGTH) -> str:
         """生成随机密码"""
         resolved_length = max(int(length or DEFAULT_PASSWORD_LENGTH), 8)
@@ -212,6 +260,7 @@ class RefreshTokenRegistrationEngine:
             self.email_info["email"] = email_value
             self.email = email_value
             self._log(f"成功创建邮箱: {self.email}")
+            self._log_email_diagnostics()
             return True
 
         except Exception as e:
@@ -340,10 +389,25 @@ class RefreshTokenRegistrationEngine:
             if not self.session:
                 self.session = self.http_client.session
             if flow in {"username_password_create", "oauth_create_account"}:
-                # 服务器无 XServer，必须强制 headless
                 import os
                 has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-                force_headless = not has_display
+                requested_headed = self.browser_mode == "headed"
+                force_headless = (not requested_headed) or (not has_display)
+                reason = (
+                    "executor_type 非 headed"
+                    if not requested_headed
+                    else (
+                        "检测到 DISPLAY/WAYLAND_DISPLAY"
+                        if has_display
+                        else "无 DISPLAY/WAYLAND_DISPLAY，强制 headless"
+                    )
+                )
+                self._log(
+                    "Sentinel Browser 模式: "
+                    f"requested={self.browser_mode}, "
+                    f"actual={'headless' if force_headless else 'headed'}, "
+                    f"reason={reason}"
+                )
                 browser_token = get_sentinel_token_via_browser(
                     flow=flow,
                     proxy=self.proxy_url,
@@ -402,6 +466,9 @@ class RefreshTokenRegistrationEngine:
                     self._log(f"{log_label}: 成功获取 cf_clearance cookie")
                 else:
                     self._log(f"{log_label}: 未获取到 cf_clearance，可能需要等待")
+                self._log(
+                    f"{log_label}: 诊断 cf_clearance={'已获取' if cf_cookie else '未获取'}"
+                )
                 
                 # 等待 Cloudflare JS challenge 完成
                 time.sleep(random.uniform(2.0, 4.0))
@@ -446,6 +513,7 @@ class RefreshTokenRegistrationEngine:
             )
 
             self._log(f"{log_label}状态: {response.status_code}")
+            self._log_response_diagnostics(log_label, response)
 
             if response.status_code != 200:
                 return SignupFormResult(
@@ -813,6 +881,10 @@ class RefreshTokenRegistrationEngine:
                     timeout=15,
                 )
                 self._log(f"提交密码前：页面访问状态: {page_resp.status_code}")
+                cf_cookie = self.session.cookies.get("cf_clearance")
+                self._log(
+                    f"提交密码前：诊断 cf_clearance={'已获取' if cf_cookie else '未获取'}"
+                )
                 time.sleep(random.uniform(1.5, 3.0))
             except Exception as page_err:
                 self._log(f"提交密码前：页面访问异常（继续尝试）: {page_err}")
@@ -845,6 +917,7 @@ class RefreshTokenRegistrationEngine:
             )
 
             self._log(f"提交密码状态: {response.status_code}")
+            self._log_response_diagnostics("提交密码", response)
 
             if response.status_code != 200:
                 error_text = response.text[:500]
@@ -1739,6 +1812,7 @@ class RefreshTokenRegistrationEngine:
             self._log("=" * 60)
             self._log("注册流程启动")
             self._log("=" * 60)
+            self._log_runtime_diagnostics()
 
             # 1. 检查 IP 地理位置
             self._log("1. 检查 IP 地理位置...")

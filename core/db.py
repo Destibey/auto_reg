@@ -1,14 +1,51 @@
 """数据库模型 - SQLite via SQLModel"""
 from datetime import datetime, timezone
 from typing import Optional
+import os
+from pathlib import Path
 from sqlmodel import Field, SQLModel, create_engine, Session, select
 import json
+
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 def _utcnow():
     return datetime.now(timezone.utc)
 
-DATABASE_URL = "sqlite:///account_manager.db"
+def _sqlite_url_for_path(path: Path) -> str:
+    text = path.as_posix()
+    if path.is_absolute():
+        return f"sqlite:////{text.lstrip('/')}"
+    return f"sqlite:///{text}"
+
+
+def _get_runtime_env(key: str) -> str:
+    value = os.getenv(key, "").strip()
+    if value:
+        return value
+    try:
+        lines = _ENV_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except Exception:
+        return ""
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        item_key, item_value = line.split("=", 1)
+        if item_key.strip() == key:
+            return item_value.strip().strip("'\"")
+    return ""
+
+
+def _database_url() -> str:
+    runtime_dir = _get_runtime_env("APP_RUNTIME_DIR")
+    db_path = Path(runtime_dir) / "account_manager.db" if runtime_dir else Path("account_manager.db")
+    if runtime_dir:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    return _sqlite_url_for_path(db_path)
+
+
+DATABASE_URL = _database_url()
 engine = create_engine(DATABASE_URL)
 
 

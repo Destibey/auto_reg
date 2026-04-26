@@ -119,10 +119,11 @@ class BaseMailbox(ABC):
         if not text:
             return ""
         # 简单切分 Header 和 Body
-        if "\r\n\r\n" in text:
-            text = text.split("\r\n\r\n", 1)[1]
-        elif "\n\n" in text:
-            text = text.split("\n\n", 1)[1]
+        if re.search(r"(?im)^(?:Return-Path|Received|Date|From|To|Subject|Content-Type):", text):
+            if "\r\n\r\n" in text:
+                text = text.split("\r\n\r\n", 1)[1]
+            elif "\n\n" in text:
+                text = text.split("\n\n", 1)[1]
         try:
             # 处理 Quoted-Printable
             decoded_bytes = quopri.decodestring(text)
@@ -283,6 +284,16 @@ def create_mailbox(
             fingerprint=extra.get("cfworker_fingerprint", ""),
             custom_auth=extra.get("cfworker_custom_auth", ""),
             proxy=proxy,
+        )
+    elif provider == "gmail_imap":
+        return GmailIMAPMailbox(
+            username=extra.get("gmail_imap_email", ""),
+            app_password=extra.get("gmail_imap_app_password", ""),
+            host=extra.get("gmail_imap_host", "imap.gmail.com"),
+            port=extra.get("gmail_imap_port", 993),
+            mailbox=extra.get("gmail_imap_mailbox", "INBOX"),
+            target_email=extra.get("gmail_imap_target_email", ""),
+            target_domain=extra.get("gmail_imap_target_domain", ""),
         )
     elif provider == "luckmail":
         return LuckMailMailbox(
@@ -580,6 +591,197 @@ class TempMailLolMailbox(BaseMailbox):
             except Exception as e:
                 self._log(f"[TempMailLol] 轮询异常: {e}")
                 pass
+            return None
+
+        return self._run_polling_wait(
+            timeout=timeout,
+            poll_interval=3,
+            poll_once=poll_once,
+        )
+
+
+class GmailIMAPMailbox(BaseMailbox):
+    """Gmail IMAP 收件箱；支持 catch-all 转发到 Gmail 后读取验证码。"""
+
+    def __init__(
+        self,
+        username: str,
+        app_password: str,
+        host: str = "imap.gmail.com",
+        port: Any = 993,
+        mailbox: str = "INBOX",
+        target_email: str = "",
+        target_domain: str = "",
+    ):
+        self.username = self._normalize_email(username)
+        # Gmail App Password 常被复制成带空格的分组格式，这里做一次兼容清理。
+        self.app_password = "".join(str(app_password or "").split())
+        self.host = str(host or "imap.gmail.com").strip()
+        try:
+            self.port = int(port or 993)
+        except Exception:
+            self.port = 993
+        self.mailbox = str(mailbox or "INBOX").strip() or "INBOX"
+        self.target_email = self._normalize_email(target_email)
+        self.target_domain = self._normalize_domain(target_domain)
+
+    @staticmethod
+    def _normalize_email(value: Any) -> str:
+        return str(value or "").strip().lower()
+
+    @staticmethod
+    def _normalize_domain(value: Any) -> str:
+        domain = str(value or "").strip().lower()
+        if domain.startswith("@"):
+            domain = domain[1:]
+        return domain
+
+    def _generate_local_part(self) -> str:
+        import string
+
+        prefix = "".join(random.choices(string.ascii_lowercase, k=7))
+        suffix = "".join(random.choices(string.digits, k=5))
+        return f"{prefix}{suffix}"
+
+    def _ensure_configured(self) -> None:
+        if not self.username or not self.app_password:
+            raise RuntimeError(
+                "Gmail IMAP 未配置完整：请设置 gmail_imap_email 和 gmail_imap_app_password"
+            )
+        if not self.target_email and not self.target_domain and "@" not in self.username:
+            raise RuntimeError(
+                "Gmail IMAP 未配置注册邮箱：请设置 gmail_imap_target_email 或 gmail_imap_target_domain"
+            )
+
+    def _connect(self):
+        import imaplib
+
+        self._ensure_configured()
+        client = imaplib.IMAP4_SSL(self.host, self.port)
+        client.login(self.username, self.app_password)
+        client.select(self.mailbox)
+        return client
+
+    def _logout(self, client) -> None:
+        try:
+            client.logout()
+        except Exception:
+            pass
+
+    def get_email(self) -> MailboxAccount:
+        self._ensure_configured()
+        if self.target_email:
+            email_address = self.target_email
+        elif self.target_domain:
+            email_address = f"{self._generate_local_part()}@{self.target_domain}"
+        else:
+            email_address = self.username
+        return MailboxAccount(email=email_address, account_id=email_address)
+
+    def _search_uids(self, client) -> list[str]:
+        status, data = client.uid("search", None, "ALL")
+        if str(status).upper() != "OK" or not data:
+            return []
+        raw_ids = data[0] or b""
+        if isinstance(raw_ids, str):
+            raw_ids = raw_ids.encode("ascii", errors="ignore")
+        return [
+            item.decode("ascii", errors="ignore")
+            for item in raw_ids.split()
+            if item
+        ]
+
+    def get_current_ids(self, account: MailboxAccount) -> set:
+        client = self._connect()
+        try:
+            return set(self._search_uids(client))
+        finally:
+            self._logout(client)
+
+    def _fetch_raw_message(self, client, uid: str) -> bytes:
+        status, data = client.uid("fetch", str(uid).encode("ascii"), "(BODY.PEEK[])")
+        if str(status).upper() != "OK" or not data:
+            return b""
+        for item in data:
+            if not isinstance(item, tuple):
+                continue
+            for part in reversed(item):
+                if isinstance(part, bytes) and part:
+                    return part
+        return b""
+
+    def _message_text(self, raw: bytes) -> str:
+        import email
+        from email import policy
+
+        if not raw:
+            return ""
+        msg = email.message_from_bytes(raw, policy=policy.default)
+        headers = " ".join(
+            str(msg.get(name, "") or "")
+            for name in (
+                "subject",
+                "from",
+                "to",
+                "cc",
+                "delivered-to",
+                "x-original-to",
+                "x-forwarded-to",
+                "envelope-to",
+            )
+        )
+        body_parts = []
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_maintype() == "multipart":
+                    continue
+                try:
+                    content = part.get_content()
+                except Exception:
+                    continue
+                body_parts.append(str(content or ""))
+        else:
+            try:
+                body_parts.append(str(msg.get_content() or ""))
+            except Exception:
+                body_parts.append(raw.decode("utf-8", errors="ignore"))
+        return self._decode_raw_content(f"{headers} {' '.join(body_parts)}")
+
+    def wait_for_code(
+        self,
+        account: MailboxAccount,
+        keyword: str = "",
+        timeout: int = 120,
+        before_ids: set = None,
+        code_pattern: str = None,
+        **kwargs,
+    ) -> str:
+        seen = set(str(item) for item in (before_ids or set()))
+        target_email = self._normalize_email(account.email)
+        exclude_codes = {
+            str(code).strip()
+            for code in (kwargs.get("exclude_codes") or set())
+            if str(code or "").strip()
+        }
+
+        def poll_once() -> Optional[str]:
+            client = self._connect()
+            try:
+                for uid in reversed(self._search_uids(client)):
+                    if uid in seen:
+                        continue
+                    seen.add(uid)
+                    text = self._message_text(self._fetch_raw_message(client, uid))
+                    if target_email and target_email not in text.lower():
+                        continue
+                    if keyword and keyword.lower() not in text.lower():
+                        continue
+                    code = self._safe_extract(text, code_pattern)
+                    if code and code not in exclude_codes:
+                        self._log(f"[GmailIMAP] 收到验证码: {code}")
+                        return code
+            finally:
+                self._logout(client)
             return None
 
         return self._run_polling_wait(

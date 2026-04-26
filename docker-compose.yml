@@ -1,3 +1,5 @@
+# Legacy full-AutoReg container compose. The recommended runtime boundary is:
+# AutoReg on the host, CPA/CLIProxyAPI independent, grok2api via docker-compose.integrations.yml.
 services:
   app:
     build:

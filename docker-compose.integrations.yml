@@ -1,0 +1,26 @@
+name: autoreg-grok2api
+
+services:
+  grok2api:
+    image: ${GROK2API_IMAGE:-ghcr.io/chenyme/grok2api:latest}
+    pull_policy: always
+    container_name: autoreg-grok2api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${GROK2API_PORT_BIND:-8011}:8000"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      LOG_LEVEL: ${GROK2API_LOG_LEVEL:-INFO}
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8000"
+      SERVER_WORKERS: ${GROK2API_SERVER_WORKERS:-1}
+      DATA_DIR: /app/data
+      LOG_DIR: /app/logs
+      ACCOUNT_STORAGE: ${GROK2API_ACCOUNT_STORAGE:-local}
+      ACCOUNT_LOCAL_PATH: ${GROK2API_ACCOUNT_LOCAL_PATH:-/app/data/accounts.db}
+      ACCOUNT_REDIS_URL: ${GROK2API_ACCOUNT_REDIS_URL:-}
+      ACCOUNT_MYSQL_URL: ${GROK2API_ACCOUNT_MYSQL_URL:-}
+      ACCOUNT_POSTGRESQL_URL: ${GROK2API_ACCOUNT_POSTGRESQL_URL:-}
+    volumes:
+      - ${GROK2API_DATA_BIND:-./data/grok2api/data}:/app/data
+      - ${GROK2API_LOG_BIND:-./data/grok2api/logs}:/app/logs

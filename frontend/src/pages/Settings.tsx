@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Card, Form, Input, Select, Button, message, Tabs, Space, Tag, Typography, Modal, QRCode, Switch } from 'antd'
+import { Alert, App, Card, Form, Input, Select, Button, message, Tabs, Space, Tag, Typography, Modal, QRCode, Switch } from 'antd'
 import {
   SaveOutlined,
   EyeOutlined,
@@ -29,6 +29,7 @@ const SELECT_FIELDS: Record<string, { label: string; value: string }[]> = {
     { label: 'OpenTrashMail', value: 'opentrashmail' },
     { label: 'Freemail（自建 CF Worker）', value: 'freemail' },
     { label: 'CF Worker（自建域名）', value: 'cfworker' },
+    { label: 'Gmail IMAP（自有域名转发）', value: 'gmail_imap' },
   ],
   maliapi_auto_domain_strategy: [
     { label: 'balanced', value: 'balanced' },
@@ -181,6 +182,20 @@ const TAB_ITEMS = [
         ],
       },
       {
+        title: 'Gmail IMAP',
+        provider: 'gmail_imap',
+        desc: '读取 Gmail 收件箱验证码；可配合自有域名 catch-all 转发到 Gmail 使用',
+        fields: [
+          { key: 'gmail_imap_email', label: 'Gmail 登录邮箱', placeholder: 'your@gmail.com' },
+          { key: 'gmail_imap_app_password', label: 'Gmail App Password', secret: true, placeholder: '需要 Gmail 应用专用密码' },
+          { key: 'gmail_imap_host', label: 'IMAP Host', placeholder: 'imap.gmail.com' },
+          { key: 'gmail_imap_port', label: 'IMAP Port', placeholder: '993' },
+          { key: 'gmail_imap_mailbox', label: '邮箱目录', placeholder: 'INBOX' },
+          { key: 'gmail_imap_target_email', label: '固定注册邮箱（可选）', placeholder: 'jgbbpro@example.com' },
+          { key: 'gmail_imap_target_domain', label: 'Catch-all 域名（可选）', placeholder: 'example.com' },
+        ],
+      },
+      {
         title: 'LuckMail',
         provider: 'luckmail',
         desc: 'ChatGPT 走购买邮箱，其他平台继续走订单接码老逻辑',
@@ -279,7 +294,7 @@ const TAB_ITEMS = [
     sections: [
       {
         title: '管理面板',
-        desc: '用于 CLIProxyAPI 管理页登录',
+        desc: '用于对接独立运行的 CPA/CLIProxyAPI 管理页，AutoReg 不接管 CPA 启停',
         fields: [
           { key: 'cliproxyapi_base_url', label: 'API URL', placeholder: 'http://127.0.0.1:8317' },
           { key: 'cliproxyapi_management_key', label: '管理口令', secret: true, placeholder: '默认 cliproxyapi' },
@@ -294,9 +309,9 @@ const TAB_ITEMS = [
     sections: [
       {
         title: 'grok2api',
-        desc: '注册成功后自动导入到 grok2api 管理后台',
+        desc: '注册成功后自动导入到 AutoReg 侧 Docker 托管的 grok2api 管理后台',
         fields: [
-          { key: 'grok2api_url', label: 'API URL', placeholder: 'http://127.0.0.1:7860' },
+          { key: 'grok2api_url', label: 'API URL', placeholder: 'http://127.0.0.1:8011' },
           { key: 'grok2api_app_key', label: 'App Key', secret: true },
           { key: 'grok2api_api_key', label: 'API 调用密钥（可选）', secret: true },
           { key: 'grok2api_cpa_url', label: 'CPA 访问 URL（可选）', placeholder: 'http://host.docker.internal:8011' },
@@ -766,13 +781,20 @@ function IntegrationsPanel() {
         </pre>
       </Modal>
 
+      <Alert
+        type="info"
+        showIcon
+        message="推荐运行边界"
+        description="AutoReg 在宿主机运行；CPA/CLIProxyAPI 作为独立稳定服务运行；grok2api 由 AutoReg 侧 Docker Compose 托管。启动 grok2api 请执行 docker compose -f docker-compose.integrations.yml up -d grok2api。"
+      />
+
       <Card title="批量操作">
         <Space wrap>
           <Button loading={busy === 'start-all'} onClick={() => doAction('start-all', apiFetch('/integrations/services/start-all', { method: 'POST' }))}>
-            启动全部（已安装）
+            启动全部（宿主机托管）
           </Button>
           <Button loading={busy === 'stop-all'} onClick={() => doAction('stop-all', apiFetch('/integrations/services/stop-all', { method: 'POST' }))}>
-            停止全部
+            停止全部（宿主机托管）
           </Button>
           <Button loading={loading} onClick={load}>
             刷新状态
@@ -780,7 +802,12 @@ function IntegrationsPanel() {
         </Space>
       </Card>
 
-      {items.map((item) => (
+      {items.map((item) => {
+        const dockerManaged = item.runtime_boundary === 'docker'
+        const externalManaged = item.runtime_boundary === 'external'
+        const canOperate = !externalManaged
+
+        return (
         <Card key={item.name} title={item.label}>
           <Space direction="vertical" style={{ width: '100%' }}>
             <div>
@@ -788,16 +815,17 @@ function IntegrationsPanel() {
               <Tag color={item.running ? 'green' : 'default'} style={{ marginLeft: 8 }}>
                 {item.running ? '运行中' : '未运行'}
               </Tag>
-              <Tag color={item.repo_exists ? 'blue' : 'orange'} style={{ marginLeft: 8 }}>
-                {item.repo_exists ? '已安装' : '未安装'}
+              <Tag color={externalManaged ? 'gold' : dockerManaged ? 'cyan' : item.repo_exists ? 'blue' : 'orange'} style={{ marginLeft: 8 }}>
+                {externalManaged ? '外部独立' : dockerManaged ? 'Docker 托管' : item.repo_exists ? '已安装' : '未安装'}
               </Tag>
               {item.pid ? <span style={{ marginLeft: 8 }}>PID: {item.pid}</span> : null}
             </div>
-            <div>插件目录：<Typography.Text copyable>{item.repo_path}</Typography.Text></div>
+            {item.runtime_hint ? <Alert type="info" showIcon message={item.runtime_hint} /> : null}
+            {!dockerManaged && !externalManaged ? <div>插件目录：<Typography.Text copyable>{item.repo_path}</Typography.Text></div> : null}
             {item.url ? <div>地址：<Typography.Text copyable>{item.url}</Typography.Text></div> : null}
             {item.management_url ? <div>管理页：<Typography.Text copyable>{item.management_url}</Typography.Text></div> : null}
             {item.management_key ? <div>登录口令：<Typography.Text copyable>{item.management_key}</Typography.Text></div> : null}
-            <div>日志：<Typography.Text copyable>{item.log_path}</Typography.Text></div>
+            {!dockerManaged && !externalManaged ? <div>日志：<Typography.Text copyable>{item.log_path}</Typography.Text></div> : null}
             {item.last_error ? <div style={{ color: '#ef4444' }}>最近错误：{item.last_error}</div> : null}
             <Space wrap>
               {item.management_url ? (
@@ -805,28 +833,32 @@ function IntegrationsPanel() {
                   打开管理页
                 </Button>
               ) : null}
-              {!item.repo_exists ? (
+              {canOperate && (dockerManaged || !item.repo_exists) ? (
                 <Button
                   type="primary"
                   loading={busy === `install-${item.name}`}
                   onClick={() => doAction(`install-${item.name}`, apiFetch(`/integrations/services/${item.name}/install`, { method: 'POST' }))}
                 >
-                  安装
+                  {dockerManaged ? '拉取镜像' : '安装'}
                 </Button>
               ) : null}
-              <Button
-                loading={busy === `start-${item.name}`}
-                disabled={!item.repo_exists}
-                onClick={() => doAction(`start-${item.name}`, apiFetch(`/integrations/services/${item.name}/start`, { method: 'POST' }))}
-              >
-                启动
-              </Button>
-              <Button
-                loading={busy === `stop-${item.name}`}
-                onClick={() => doAction(`stop-${item.name}`, apiFetch(`/integrations/services/${item.name}/stop`, { method: 'POST' }))}
-              >
-                停止
-              </Button>
+              {canOperate ? (
+                <>
+                  <Button
+                    loading={busy === `start-${item.name}`}
+                    disabled={!dockerManaged && !item.repo_exists}
+                    onClick={() => doAction(`start-${item.name}`, apiFetch(`/integrations/services/${item.name}/start`, { method: 'POST' }))}
+                  >
+                    启动
+                  </Button>
+                  <Button
+                    loading={busy === `stop-${item.name}`}
+                    onClick={() => doAction(`stop-${item.name}`, apiFetch(`/integrations/services/${item.name}/stop`, { method: 'POST' }))}
+                  >
+                    停止
+                  </Button>
+                </>
+              ) : null}
               {item.name === 'grok2api' ? (
                 <Button
                   loading={busy === 'backfill-grok'}
@@ -846,7 +878,8 @@ function IntegrationsPanel() {
             </Space>
           </Space>
         </Card>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -1114,6 +1147,15 @@ export default function Settings() {
       }
       if (!data.luckmail_base_url) {
         data.luckmail_base_url = 'https://mails.luckyous.com/'
+      }
+      if (!data.gmail_imap_host) {
+        data.gmail_imap_host = 'imap.gmail.com'
+      }
+      if (!data.gmail_imap_port) {
+        data.gmail_imap_port = '993'
+      }
+      if (!data.gmail_imap_mailbox) {
+        data.gmail_imap_mailbox = 'INBOX'
       }
       data.cfworker_domains = parseStoredDomainList(data.cfworker_domains)
       data.cfworker_enabled_domains = parseStoredDomainList(data.cfworker_enabled_domains)

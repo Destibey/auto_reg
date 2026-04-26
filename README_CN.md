@@ -56,7 +56,7 @@
 - [API 文档](#-api-文档)
 - [常见问题](#-常见问题)
 - [开发指南](#-开发指南)
-- [Docker 部署](#-docker-部署)
+- [grok2api Docker 部署与 CPA 兼容](#-grok2api-docker-部署与-cpa-兼容)
 - [贡献指南](#-贡献指南)
 - [许可证](#-许可证)
 - [Star History](#-star-history)
@@ -112,7 +112,7 @@
 - **状态管理**: Zustand
 
 ### 基础设施
-- **容器化**: Docker + Docker Compose
+- **运行边界**: AutoReg 宿主机运行；CPA/CLIProxyAPI 独立管理；grok2api 由 AutoReg 侧 Docker Compose 托管
 - **环境管理**: Conda（推荐）或 venv
 
 ---
@@ -124,7 +124,15 @@
 - **Python**: 3.12 或更高版本
 - **Node.js**: 18 或更高版本
 - **Conda**: 推荐用于环境管理
+- **Docker Compose**: 仅用于 AutoReg 侧托管 grok2api
 - **Git**: 用于克隆仓库
+
+### 推荐运行边界
+
+- **AutoReg**：在宿主机运行，直接使用本机浏览器自动化、Solver、SQLite 与前端构建产物。
+- **CPA/CLIProxyAPI**：作为独立稳定服务运行，AutoReg 只通过 `http://127.0.0.1:8317` 和管理口令对接，不接管启停。
+- **grok2api**：由 AutoReg 侧 Docker Compose 托管，并通过 `http://127.0.0.1:8011` 暴露给宿主机上的 AutoReg。
+- **CPA 访问 grok2api**：独立 CPA 容器访问宿主机映射端口，默认使用 `http://host.docker.internal:8011`，对应 AutoReg 配置项 `grok2api_cpa_url`。
 
 ### 方法一：一键部署（推荐）
 
@@ -133,11 +141,22 @@
 git clone https://github.com/dsclca12/auto_reg.git
 cd auto_reg
 
-# 2. 执行部署脚本
+# 2. 准备配置并启动 AutoReg 托管的 grok2api
+cp .env.example .env
+docker compose -f docker-compose.integrations.yml up -d grok2api
+
+# 3. 执行宿主机部署脚本
 ./deploy.sh
 ```
 
-部署完成后访问 http://localhost:8000
+部署完成后访问 AutoReg：http://localhost:8000
+
+外部服务默认地址：
+
+| 服务 | 宿主机访问地址 | 说明 |
+|------|----------------|------|
+| CPA/CLIProxyAPI | `http://127.0.0.1:8317` | 独立管理，AutoReg 不接管启停 |
+| grok2api | `http://127.0.0.1:8011` | AutoReg 侧 Docker Compose 托管，默认 App Key `grok2api` |
 
 ### 方法二：手动安装
 
@@ -183,7 +202,12 @@ cp .env.example .env
 # 编辑 .env 文件，填入你的配置
 ```
 
-#### 7. 启动服务
+#### 7. 启动 AutoReg 托管的 grok2api
+```bash
+docker compose -f docker-compose.integrations.yml up -d grok2api
+```
+
+#### 8. 启动 AutoReg
 ```bash
 python main.py
 ```
@@ -202,6 +226,7 @@ python main.py
 # 服务器配置
 HOST=0.0.0.0
 PORT=8000
+APP_RUNTIME_DIR=./data
 APP_RELOAD=0
 APP_CONDA_ENV=any-auto-register
 
@@ -211,6 +236,19 @@ LOCAL_SOLVER_URL=http://127.0.0.1:8889
 
 # 代理（可选）
 PROXY_URL=http://username:password@ip:port
+
+# 外部系统边界
+# CPA/CLIProxyAPI 独立管理，AutoReg 只通过 API 对接。
+CPA_API_URL=http://127.0.0.1:8317
+CPA_API_KEY=cliproxyapi
+CLIPROXYAPI_BASE_URL=http://127.0.0.1:8317
+CLIPROXYAPI_MANAGEMENT_KEY=cliproxyapi
+
+# grok2api 由 AutoReg 侧 Docker Compose 托管。
+GROK2API_URL=http://127.0.0.1:8011
+GROK2API_APP_KEY=grok2api
+GROK2API_API_KEY=
+GROK2API_CPA_URL=http://host.docker.internal:8011
 
 # 邮箱服务（根据需要配置）
 MOEMAIL_API_KEY=your_api_key
@@ -253,10 +291,10 @@ Kiro 风控严格，邮箱方案显著影响成功率：
 
 | 系统 | 说明 | 配置 |
 |------|------|------|
-| **CPA** | Codex Protocol API 管理面板 | API URL + Key |
+| **CPA** | Codex Protocol API 管理面板，独立稳定服务 | `http://127.0.0.1:8317` + Key |
 | **Sub2API** | API 中转管理 | API URL + Key |
 | **Team Manager** | 团队管理 | - |
-| **grok2api** | Grok token 管理 | API URL + Key |
+| **grok2api** | Grok token 管理，由 AutoReg 侧 Docker 托管 | `http://127.0.0.1:8011` + App Key |
 
 ---
 
@@ -523,7 +561,7 @@ pytest tests/
 
 ---
 
-## 🐳 Docker 部署
+## 🐳 grok2api Docker 部署与 CPA 兼容
 
 ### 环境要求
 
@@ -533,22 +571,21 @@ pytest tests/
 ### 快速开始
 
 ```bash
-# 构建并启动
-docker-compose up -d
+# 只启动 AutoReg 托管的 grok2api；AutoReg 仍在宿主机运行，CPA 独立运行
+docker compose -f docker-compose.integrations.yml up -d grok2api
 
 # 查看日志
-docker-compose logs -f
+docker compose -f docker-compose.integrations.yml logs -f
 
 # 停止服务
-docker-compose down
+docker compose -f docker-compose.integrations.yml down
 ```
 
 ### 环境变量
 
 ```bash
-# 在 docker-compose.yml 或 .env 中配置
-SOLVER_BROWSER_TYPE=camoufox
-CLIPROXYAPI_PORT_BIND=8317
+# 在 docker-compose.integrations.yml 或 .env 中配置
+GROK2API_IMAGE=ghcr.io/chenyme/grok2api:latest
 GROK2API_PORT_BIND=8011
 ```
 
@@ -556,9 +593,25 @@ GROK2API_PORT_BIND=8011
 
 | 主机路径 | 容器路径 | 说明 |
 |---------|---------|------|
-| `./data` | `/runtime` | 运行时数据 |
-| `./_ext_targets` | `/_ext_targets` | 外部目标 |
-| `./external_logs` | `/app/services/external_logs` | 外部日志 |
+| `./data/grok2api/data` | `/app/data` | grok2api 账号与运行时配置 |
+| `./data/grok2api/logs` | `/app/logs` | grok2api 日志 |
+
+### CPA 兼容配置
+
+AutoReg 连接独立 CPA 使用宿主机地址：
+
+```bash
+CPA_API_URL=http://127.0.0.1:8317
+CLIPROXYAPI_BASE_URL=http://127.0.0.1:8317
+```
+
+CPA 容器访问 AutoReg 托管的 grok2api 时，默认走 Docker Desktop 的宿主机别名：
+
+```bash
+GROK2API_CPA_URL=http://host.docker.internal:8011
+```
+
+如果你的 CPA 不在 Docker Desktop 中运行，或网络环境不同，只需要把 `grok2api_cpa_url` 改成 CPA 能访问到的 grok2api 地址。
 
 ---
 

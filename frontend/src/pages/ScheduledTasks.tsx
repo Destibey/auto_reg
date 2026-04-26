@@ -341,6 +341,7 @@ export default function ScheduledTasks() {
                 { value: 'skymail', label: 'SkyMail (CloudMail)' },
                 { value: 'duckmail', label: 'DuckMail' },
                 { value: 'laoudo', label: 'Laoudo' },
+                { value: 'gmail_imap', label: 'Gmail IMAP' },
               ]}
             />
           </Form.Item>

@@ -54,7 +54,7 @@ This project is a third-generation fork based on the following outstanding open-
 - [API Documentation](#-api-documentation)
 - [Troubleshooting](#-troubleshooting)
 - [Development Guide](#-development-guide)
-- [Docker Deployment](#-docker-deployment)
+- [grok2api Docker Deployment and CPA Compatibility](#-grok2api-docker-deployment-and-cpa-compatibility)
 - [Contributing](#-contributing)
 - [License](#-license)
 - [Star History](#-star-history)
@@ -110,7 +110,7 @@ This project is a third-generation fork based on the following outstanding open-
 - **State Management**: Zustand
 
 ### Infrastructure
-- **Container**: Docker + Docker Compose
+- **Runtime Boundary**: AutoReg runs on the host; CPA/CLIProxyAPI is managed independently; grok2api is managed by AutoReg-side Docker Compose
 - **Environment**: Conda (recommended) or venv
 
 ---
@@ -122,7 +122,15 @@ This project is a third-generation fork based on the following outstanding open-
 - **Python**: 3.12 or higher
 - **Node.js**: 18 or higher
 - **Conda**: Recommended for environment management
+- **Docker Compose**: Used only for AutoReg-side grok2api
 - **Git**: For cloning the repository
+
+### Recommended Runtime Boundary
+
+- **AutoReg**: Runs on the host, using local browser automation, Solver, SQLite, and built frontend assets.
+- **CPA/CLIProxyAPI**: Runs as an independent stable service. AutoReg only connects to it through `http://127.0.0.1:8317` and the management key; AutoReg does not manage its lifecycle.
+- **grok2api**: Managed by AutoReg-side Docker Compose and exposed to host AutoReg at `http://127.0.0.1:8011`.
+- **CPA to grok2api**: Independent CPA containers should access the host-mapped grok2api port, defaulting to `http://host.docker.internal:8011`, which maps to AutoReg config key `grok2api_cpa_url`.
 
 ### Method 1: One-Click Deployment (Recommended)
 
@@ -131,11 +139,22 @@ This project is a third-generation fork based on the following outstanding open-
 git clone https://github.com/dsclca12/auto_reg.git
 cd auto_reg
 
-# 2. Run deployment script
+# 2. Prepare config and start AutoReg-managed grok2api
+cp .env.example .env
+docker compose -f docker-compose.integrations.yml up -d grok2api
+
+# 3. Run the host deployment script
 ./deploy.sh
 ```
 
-After deployment, access http://localhost:8000
+After deployment, access AutoReg at http://localhost:8000
+
+Default external service URLs:
+
+| Service | Host URL | Notes |
+|---------|----------|-------|
+| CPA/CLIProxyAPI | `http://127.0.0.1:8317` | Independently managed; AutoReg does not start/stop it |
+| grok2api | `http://127.0.0.1:8011` | AutoReg-side Docker Compose, default App Key `grok2api` |
 
 ### Method 2: Manual Installation
 
@@ -181,7 +200,12 @@ cp .env.example .env
 # Edit .env file with your configuration
 ```
 
-#### 7. Start the Service
+#### 7. Start AutoReg-managed grok2api
+```bash
+docker compose -f docker-compose.integrations.yml up -d grok2api
+```
+
+#### 8. Start AutoReg
 ```bash
 python main.py
 ```
@@ -200,6 +224,7 @@ Copy `.env.example` to `.env` and configure as needed:
 # Server Configuration
 HOST=0.0.0.0
 PORT=8000
+APP_RUNTIME_DIR=./data
 APP_RELOAD=0
 APP_CONDA_ENV=any-auto-register
 
@@ -209,6 +234,19 @@ LOCAL_SOLVER_URL=http://127.0.0.1:8889
 
 # Proxy (Optional)
 PROXY_URL=http://username:password@ip:port
+
+# External system boundary
+# CPA/CLIProxyAPI is independently managed; AutoReg only connects through API.
+CPA_API_URL=http://127.0.0.1:8317
+CPA_API_KEY=cliproxyapi
+CLIPROXYAPI_BASE_URL=http://127.0.0.1:8317
+CLIPROXYAPI_MANAGEMENT_KEY=cliproxyapi
+
+# grok2api is managed by AutoReg-side Docker Compose.
+GROK2API_URL=http://127.0.0.1:8011
+GROK2API_APP_KEY=grok2api
+GROK2API_API_KEY=
+GROK2API_CPA_URL=http://host.docker.internal:8011
 
 # Email Services (Configure based on your needs)
 MOEMAIL_API_KEY=your_api_key
@@ -251,10 +289,10 @@ Kiro has strict risk control. Email solution significantly affects success rate:
 
 | System | Description | Configuration |
 |--------|-------------|---------------|
-| **CPA** | Codex Protocol API management panel | API URL + Key |
+| **CPA** | Codex Protocol API management panel, independent stable service | `http://127.0.0.1:8317` + Key |
 | **Sub2API** | API transit management | API URL + Key |
 | **Team Manager** | Team management | - |
-| **grok2api** | Grok token management | API URL + Key |
+| **grok2api** | Grok token management, managed by AutoReg-side Docker | `http://127.0.0.1:8011` + App Key |
 
 ---
 
@@ -521,7 +559,7 @@ pytest tests/
 
 ---
 
-## 🐳 Docker Deployment
+## 🐳 grok2api Docker Deployment and CPA Compatibility
 
 ### Prerequisites
 
@@ -531,22 +569,21 @@ pytest tests/
 ### Quick Start
 
 ```bash
-# Build and start
-docker-compose up -d
+# Start only AutoReg-managed grok2api; AutoReg still runs on the host, CPA stays independent
+docker compose -f docker-compose.integrations.yml up -d grok2api
 
 # View logs
-docker-compose logs -f
+docker compose -f docker-compose.integrations.yml logs -f
 
 # Stop service
-docker-compose down
+docker compose -f docker-compose.integrations.yml down
 ```
 
 ### Environment Variables
 
 ```bash
-# Configure in docker-compose.yml or .env
-SOLVER_BROWSER_TYPE=camoufox
-CLIPROXYAPI_PORT_BIND=8317
+# Configure in docker-compose.integrations.yml or .env
+GROK2API_IMAGE=ghcr.io/chenyme/grok2api:latest
 GROK2API_PORT_BIND=8011
 ```
 
@@ -554,9 +591,25 @@ GROK2API_PORT_BIND=8011
 
 | Host Path | Container Path | Description |
 |-----------|----------------|-------------|
-| `./data` | `/runtime` | Runtime data |
-| `./_ext_targets` | `/_ext_targets` | External targets |
-| `./external_logs` | `/app/services/external_logs` | External logs |
+| `./data/grok2api/data` | `/app/data` | grok2api accounts and runtime config |
+| `./data/grok2api/logs` | `/app/logs` | grok2api logs |
+
+### CPA Compatibility
+
+AutoReg connects to the independent CPA through the host URL:
+
+```bash
+CPA_API_URL=http://127.0.0.1:8317
+CLIPROXYAPI_BASE_URL=http://127.0.0.1:8317
+```
+
+When the independent CPA container needs to access AutoReg-managed grok2api, use Docker Desktop's host alias by default:
+
+```bash
+GROK2API_CPA_URL=http://host.docker.internal:8011
+```
+
+If your CPA is not running inside Docker Desktop, or your network layout differs, set `grok2api_cpa_url` to whichever grok2api URL is reachable from CPA.
 
 ---
 

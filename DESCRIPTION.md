@@ -58,11 +58,19 @@ git clone https://github.com/dsclca12/auto_reg.git
 cd auto_reg
 
 # One-click deployment / 一键部署
+cp .env.example .env
+docker compose -f docker-compose.integrations.yml up -d grok2api
 ./deploy.sh
 
 # Access / 访问
 # http://localhost:8000
 ```
+
+Recommended runtime boundary / 推荐运行边界:
+
+- AutoReg runs on the host / AutoReg 在宿主机运行
+- CPA/CLIProxyAPI is independently managed / CPA 独立管理
+- grok2api is managed by AutoReg-side Docker / grok2api 由 AutoReg 侧 Docker 管理
 
 ---
 

@@ -5,30 +5,66 @@ import os
 import time
 import threading
 import requests
+from pathlib import Path
 
 _proc: subprocess.Popen = None
 _log_file = None
 _lock = threading.Lock()
+_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 def _solver_enabled() -> bool:
-    return os.getenv("APP_ENABLE_SOLVER", "1").lower() not in {"0", "false", "no"}
+    return _get_runtime_env("APP_ENABLE_SOLVER", "1").lower() not in {"0", "false", "no"}
 
 
 def _solver_port() -> int:
-    return int(os.getenv("SOLVER_PORT", "8889"))
+    return int(_get_runtime_env("SOLVER_PORT", "8889"))
 
 
 def _solver_url() -> str:
-    return (os.getenv("LOCAL_SOLVER_URL") or f"http://127.0.0.1:{_solver_port()}").rstrip("/")
+    return (_get_runtime_env("LOCAL_SOLVER_URL") or f"http://127.0.0.1:{_solver_port()}").rstrip("/")
 
 
 def _solver_bind_host() -> str:
-    return os.getenv("SOLVER_BIND_HOST", "0.0.0.0")
+    return _get_runtime_env("SOLVER_BIND_HOST", "0.0.0.0")
 
 
 def _solver_browser_type() -> str:
-    return os.getenv("SOLVER_BROWSER_TYPE", "camoufox")
+    return _get_runtime_env("SOLVER_BROWSER_TYPE", "camoufox")
+
+
+def _solver_thread() -> int:
+    try:
+        return max(1, int(_get_runtime_env("SOLVER_THREAD", "1")))
+    except Exception:
+        return 1
+
+
+def _get_runtime_env(key: str, default: str = "") -> str:
+    value = os.getenv(key, "").strip()
+    if value:
+        return value
+    try:
+        lines = _ENV_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except Exception:
+        return ""
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        item_key, item_value = line.split("=", 1)
+        if item_key.strip() == key:
+            return item_value.strip().strip("'\"")
+    return default
+
+
+def _solver_log_path() -> str:
+    runtime_dir = _get_runtime_env("APP_RUNTIME_DIR")
+    if runtime_dir:
+        log_dir = Path(runtime_dir) / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return str(log_dir / "solver.log")
+    return os.path.join(os.path.dirname(__file__), "turnstile_solver", "solver.log")
 
 
 def is_running() -> bool:
@@ -51,9 +87,7 @@ def start():
         solver_script = os.path.join(
             os.path.dirname(__file__), "turnstile_solver", "start.py"
         )
-        log_path = os.path.join(
-            os.path.dirname(__file__), "turnstile_solver", "solver.log"
-        )
+        log_path = _solver_log_path()
         _log_file = open(log_path, "a", encoding="utf-8")
         _proc = subprocess.Popen(
             [
@@ -66,6 +100,8 @@ def start():
                 _solver_bind_host(),
                 "--port",
                 str(_solver_port()),
+                "--thread",
+                str(_solver_thread()),
             ],
             stdout=_log_file,
             stderr=subprocess.STDOUT,

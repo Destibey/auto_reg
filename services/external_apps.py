@@ -13,10 +13,12 @@ from typing import Any
 
 import requests
 
+_APP_ROOT = Path(__file__).resolve().parents[1]
 _ROOT = Path(__file__).resolve().parents[2]
 _EXT_ROOT = _ROOT / "_ext_targets"
 _LOG_ROOT = Path(__file__).resolve().parent / "external_logs"
 _LOG_ROOT.mkdir(parents=True, exist_ok=True)
+_INTEGRATIONS_COMPOSE = _APP_ROOT / "docker-compose.integrations.yml"
 
 _REMOTE_URLS = {
     "cliproxyapi": "https://github.com/router-for-me/CLIProxyAPI.git",
@@ -41,6 +43,7 @@ _SERVICE_META = {
         "management_url": "http://127.0.0.1:8317/management.html",
         "port": 8317,
         "kind": "web",
+        "runtime_boundary": "external",
     },
     "grok2api": {
         "label": "grok2api",
@@ -50,6 +53,7 @@ _SERVICE_META = {
         "management_url": "http://127.0.0.1:8011/admin",
         "port": 8011,
         "kind": "web",
+        "runtime_boundary": "docker",
     },
     "kiro-manager": {
         "label": "Kiro Account Manager",
@@ -64,6 +68,41 @@ _PROCS: dict[str, subprocess.Popen] = {}
 _LOG_FILES: dict[str, Any] = {}
 _LAST_ERROR: dict[str, str] = {}
 _LOCK = threading.Lock()
+
+
+def _runtime_hint(name: str) -> str:
+    if _SERVICE_META[name].get("runtime_boundary") == "docker":
+        return (
+            "推荐运行边界：AutoReg 在宿主机运行；"
+            f"{_SERVICE_META[name]['label']} 由 AutoReg 的 Docker Compose 托管。"
+            "可在 AutoReg 仓库根目录执行 "
+            "`docker compose -f docker-compose.integrations.yml up -d grok2api`。"
+        )
+    if _SERVICE_META[name].get("runtime_boundary") == "external":
+        return (
+            "推荐运行边界：CPA/CLIProxyAPI 作为独立稳定服务运行，"
+            "AutoReg 只通过配置的 API URL 和管理口令对接，不接管它的启停。"
+        )
+    return "宿主机托管：由 AutoReg 插件页安装并启动。"
+
+
+def _is_docker_managed(name: str) -> bool:
+    return _SERVICE_META[name].get("runtime_boundary") == "docker"
+
+
+def _is_external_managed(name: str) -> bool:
+    return _SERVICE_META[name].get("runtime_boundary") == "external"
+
+
+def _run_compose(args: list[str]) -> None:
+    if not _INTEGRATIONS_COMPOSE.exists():
+        raise RuntimeError(f"未找到 Docker Compose 文件：{_INTEGRATIONS_COMPOSE}")
+    subprocess.run(
+        ["docker", "compose", "-f", str(_INTEGRATIONS_COMPOSE), *args],
+        cwd=str(_APP_ROOT),
+        check=True,
+        creationflags=_creationflags(),
+    )
 
 
 def _get_setting(key: str, default: str = "") -> str:
@@ -122,6 +161,11 @@ def install(name: str) -> dict[str, Any]:
     with _LOCK:
         if name not in _SERVICE_META:
             raise KeyError(name)
+        if _is_docker_managed(name):
+            _run_compose(["pull", name])
+            return _status_one(name)
+        if _is_external_managed(name):
+            raise RuntimeError(_runtime_hint(name))
         _clone_repo_if_missing(name)
     return _status_one(name)
 
@@ -139,6 +183,8 @@ def _health_ok(name: str) -> bool:
 
 def _find_pid_by_port(port: int) -> int | None:
     if not port:
+        return None
+    if os.name != "nt":
         return None
     try:
         out = subprocess.check_output(
@@ -268,6 +314,8 @@ def _status_one(name: str) -> dict[str, Any]:
         "log_path": str(_log_path(name)),
         "last_error": _LAST_ERROR.get(name, ""),
         "kind": meta["kind"],
+        "runtime_boundary": meta.get("runtime_boundary", "host"),
+        "runtime_hint": _runtime_hint(name),
     }
 
 
@@ -590,6 +638,11 @@ def start(name: str) -> dict[str, Any]:
     with _LOCK:
         if name not in _SERVICE_META:
             raise KeyError(name)
+        if _is_docker_managed(name):
+            _run_compose(["up", "-d", name])
+            return _status_one(name)
+        if _is_external_managed(name):
+            raise RuntimeError(_runtime_hint(name))
         repo = _repo_path(name)
         if not repo.exists():
             raise RuntimeError(f"{_SERVICE_META[name]['label']} 未安装，请先在插件页点击“安装”")
@@ -630,6 +683,11 @@ def start(name: str) -> dict[str, Any]:
 
 def stop(name: str) -> dict[str, Any]:
     with _LOCK:
+        if _is_docker_managed(name):
+            _run_compose(["stop", name])
+            return _status_one(name)
+        if _is_external_managed(name):
+            raise RuntimeError(_runtime_hint(name))
         proc = _PROCS.get(name)
         port_pid = None
         desktop_pid = None
@@ -679,9 +737,17 @@ def start_all() -> list[dict[str, Any]]:
     results = []
     for name in _SERVICE_META:
         try:
-            if not _repo_path(name).exists():
+            if _is_external_managed(name):
                 item = _status_one(name)
-                item["last_error"] = "未安装；如需使用请先手动安装"
+                if not item["running"]:
+                    item["last_error"] = _runtime_hint(name)
+                results.append(item)
+            elif _is_docker_managed(name):
+                results.append(start(name))
+            elif not _repo_path(name).exists():
+                item = _status_one(name)
+                if not item["running"]:
+                    item["last_error"] = "未安装；如需使用请先手动安装"
                 results.append(item)
             else:
                 results.append(start(name))
@@ -691,4 +757,12 @@ def start_all() -> list[dict[str, Any]]:
 
 
 def stop_all() -> list[dict[str, Any]]:
-    return [stop(name) for name in _SERVICE_META]
+    results = []
+    for name in _SERVICE_META:
+        if _is_external_managed(name):
+            results.append(_status_one(name))
+        elif _is_docker_managed(name):
+            results.append(stop(name))
+        else:
+            results.append(stop(name))
+    return results

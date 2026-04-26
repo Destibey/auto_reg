@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from services.grok2api_runtime import verify_grok2api
+from services.grok2api_runtime import ensure_grok2api_ready, verify_grok2api
 
 
 class _Response:
@@ -33,6 +33,18 @@ class Grok2apiRuntimeTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(msg, "grok2api 鉴权正常")
         self.assertEqual(get_mock.call_args_list[1].args[0], "http://grok2api.example/v1/admin/verify")
+
+    def test_ensure_ready_does_not_start_host_managed_grok2api(self):
+        with mock.patch(
+            "services.grok2api_runtime.verify_grok2api",
+            return_value=(False, "grok2api 连接失败"),
+        ):
+            with mock.patch("services.external_apps.start") as start_mock:
+                ok, msg = ensure_grok2api_ready()
+
+        self.assertFalse(ok)
+        self.assertIn("Docker", msg)
+        start_mock.assert_not_called()
 
 
 if __name__ == "__main__":

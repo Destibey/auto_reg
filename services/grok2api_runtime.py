@@ -54,18 +54,12 @@ def ensure_grok2api_ready() -> Tuple[bool, str]:
     if ok:
         return True, msg
 
-    from services.external_apps import list_status, start, stop
-
-    try:
-        status = next((item for item in list_status() if item["name"] == "grok2api"), None)
-        if status and not status.get("repo_exists"):
-            return False, "grok2api 未安装，请先到“设置 → 插件”里手动安装"
-        running = bool(status and status.get("running"))
-
-        if running:
-            stop("grok2api")
-        start("grok2api")
-    except Exception as e:
-        return False, f"{msg}; 自动重启 grok2api 失败: {e}"
-
-    return verify_grok2api(api_url=api_url, app_key=app_key)
+    return (
+        False,
+        (
+            f"{msg}; grok2api 推荐通过 Docker 运行。"
+            "请在 AutoReg 仓库根目录执行 "
+            "`docker compose -f docker-compose.integrations.yml up -d grok2api`，"
+            f"并确认 grok2api_url 指向 {api_url}。"
+        ),
+    )

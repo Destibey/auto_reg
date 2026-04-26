@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  Alert,
   Card,
   Form,
   Input,
@@ -75,6 +76,13 @@ export default function RegisterTaskPage() {
         cfworker_subdomain: cfg.cfworker_subdomain || '',
         cfworker_random_subdomain: parseBooleanConfigValue(cfg.cfworker_random_subdomain),
         cfworker_fingerprint: cfg.cfworker_fingerprint || '',
+        gmail_imap_email: cfg.gmail_imap_email || '',
+        gmail_imap_app_password: cfg.gmail_imap_app_password || '',
+        gmail_imap_host: cfg.gmail_imap_host || 'imap.gmail.com',
+        gmail_imap_port: cfg.gmail_imap_port || '993',
+        gmail_imap_mailbox: cfg.gmail_imap_mailbox || 'INBOX',
+        gmail_imap_target_email: cfg.gmail_imap_target_email || '',
+        gmail_imap_target_domain: cfg.gmail_imap_target_domain || '',
         smstome_cookie: cfg.smstome_cookie || '',
         smstome_country_slugs: cfg.smstome_country_slugs || '',
         smstome_phone_attempts: cfg.smstome_phone_attempts || '',
@@ -136,6 +144,13 @@ export default function RegisterTaskPage() {
       cfworker_subdomain: values.cfworker_subdomain,
       cfworker_random_subdomain: values.cfworker_random_subdomain,
       cfworker_fingerprint: values.cfworker_fingerprint,
+      gmail_imap_email: values.gmail_imap_email,
+      gmail_imap_app_password: values.gmail_imap_app_password,
+      gmail_imap_host: values.gmail_imap_host,
+      gmail_imap_port: values.gmail_imap_port,
+      gmail_imap_mailbox: values.gmail_imap_mailbox,
+      gmail_imap_target_email: values.gmail_imap_target_email,
+      gmail_imap_target_domain: values.gmail_imap_target_domain,
       smstome_cookie: values.smstome_cookie,
       smstome_country_slugs: values.smstome_country_slugs,
       smstome_phone_attempts: values.smstome_phone_attempts,
@@ -253,6 +268,15 @@ export default function RegisterTaskPage() {
           <Form.Item name="executor_type" label="执行器" rules={[{ required: true }]}>
             <Select options={executorOptions} />
           </Form.Item>
+          {platform === 'chatgpt' && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="ChatGPT 执行器说明"
+              description="当前 ChatGPT refresh-token 注册主体仍是协议请求；有头/无头只影响 Sentinel Browser，不会复用你打开管理界面的浏览器环境。后台缺少 DISPLAY/WAYLAND_DISPLAY 时会强制 headless，并会在任务日志中写出实际模式。"
+            />
+          )}
           <Form.Item name="captcha_solver" label="验证码" rules={[{ required: true }]}>
             <Select
               options={[
@@ -303,6 +327,7 @@ export default function RegisterTaskPage() {
                 { value: 'freemail', label: 'Freemail' },
                 { value: 'laoudo', label: 'Laoudo' },
                 { value: 'cfworker', label: 'CF Worker' },
+                { value: 'gmail_imap', label: 'Gmail IMAP' },
               ]}
             />
           </Form.Item>
@@ -422,6 +447,39 @@ export default function RegisterTaskPage() {
               </Form.Item>
               <Form.Item name="cfworker_fingerprint" label="Fingerprint (可选)">
                 <Input placeholder="cfb82279f..." />
+              </Form.Item>
+            </>
+          )}
+          {mailProvider === 'gmail_imap' && (
+            <>
+              <Form.Item name="gmail_imap_email" label="Gmail 登录邮箱" rules={[{ required: true, message: '请输入 Gmail 登录邮箱' }]}>
+                <Input placeholder="your@gmail.com" />
+              </Form.Item>
+              <Form.Item name="gmail_imap_app_password" label="Gmail App Password" rules={[{ required: true, message: '请输入 Gmail 应用专用密码' }]}>
+                <Input.Password placeholder="需要开启两步验证后创建应用专用密码" />
+              </Form.Item>
+              <Form.Item name="gmail_imap_host" label="IMAP Host">
+                <Input placeholder="imap.gmail.com" />
+              </Form.Item>
+              <Form.Item name="gmail_imap_port" label="IMAP Port">
+                <Input placeholder="993" />
+              </Form.Item>
+              <Form.Item name="gmail_imap_mailbox" label="邮箱目录">
+                <Input placeholder="INBOX" />
+              </Form.Item>
+              <Form.Item
+                name="gmail_imap_target_email"
+                label="固定注册邮箱（可选）"
+                extra="填写后每次都使用这个邮箱注册，例如 jgbbpro@example.com。"
+              >
+                <Input placeholder="jgbbpro@example.com" />
+              </Form.Item>
+              <Form.Item
+                name="gmail_imap_target_domain"
+                label="Catch-all 域名（可选）"
+                extra="留空且未填固定注册邮箱时，会直接使用 Gmail 登录邮箱；填写后每次生成随机地址 @该域名，并从 Gmail 收件箱读取转发邮件。"
+              >
+                <Input placeholder="example.com" />
               </Form.Item>
             </>
           )}

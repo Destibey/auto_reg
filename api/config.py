@@ -46,6 +46,13 @@ CONFIG_KEYS = [
     "cfworker_subdomain",
     "cfworker_random_subdomain",
     "cfworker_fingerprint",
+    "gmail_imap_email",
+    "gmail_imap_app_password",
+    "gmail_imap_host",
+    "gmail_imap_port",
+    "gmail_imap_mailbox",
+    "gmail_imap_target_email",
+    "gmail_imap_target_domain",
     "smstome_cookie",
     "smstome_country_slugs",
     "smstome_phone_attempts",
@@ -97,6 +104,12 @@ def get_config():
         all_cfg["gptmail_base_url"] = "https://mail.chatgpt.org.uk"
     if not all_cfg.get("luckmail_base_url"):
         all_cfg["luckmail_base_url"] = "https://mails.luckyous.com/"
+    if not all_cfg.get("gmail_imap_host"):
+        all_cfg["gmail_imap_host"] = "imap.gmail.com"
+    if not all_cfg.get("gmail_imap_port"):
+        all_cfg["gmail_imap_port"] = "993"
+    if not all_cfg.get("gmail_imap_mailbox"):
+        all_cfg["gmail_imap_mailbox"] = "INBOX"
     # 只返回已知 key，未设置的返回空字符串
     return {k: all_cfg.get(k, "") for k in CONFIG_KEYS}
 

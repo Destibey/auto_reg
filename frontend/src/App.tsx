@@ -24,6 +24,7 @@ import Settings from '@/pages/Settings'
 import TaskHistory from '@/pages/TaskHistory'
 import Contribution from '@/pages/Contribution'
 import Login from '@/pages/Login'
+import { apiFetch } from '@/lib/utils'
 import { darkTheme, lightTheme } from './theme'
 
 const { Sider, Content } = Layout
@@ -48,11 +49,11 @@ function AppContent() {
 
   useEffect(() => {
     if (location.pathname === '/login') return
-    fetch('/api/platforms')
-      .then(r => r.json())
+    apiFetch('/platforms')
       .then(d => setPlatforms((d || [])
         .filter((p: any) => p.name !== 'tavily')
         .map((p: any) => ({ key: p.name, label: p.display_name }))))
+      .catch(() => setPlatforms([]))
   }, [location.pathname])
 
   if (location.pathname === '/login') {

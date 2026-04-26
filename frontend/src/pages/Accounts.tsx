@@ -1340,6 +1340,28 @@ export default function Accounts() {
       >
         {currentAccount && (
           <>
+            <DetailSection title="登录凭据">
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text type="secondary" style={{ width: 52 }}>邮箱</Text>
+                  <Text
+                    style={{ ...monospaceStyle, flex: 1, minWidth: 0, wordBreak: 'break-all', userSelect: 'text' }}
+                    copyable={{ text: currentAccount.email, tooltips: ['复制邮箱', '已复制'] }}
+                  >
+                    {currentAccount.email}
+                  </Text>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text type="secondary" style={{ width: 52 }}>密码</Text>
+                  <Text
+                    style={{ ...monospaceStyle, flex: 1, minWidth: 0, wordBreak: 'break-all', userSelect: 'text' }}
+                    copyable={{ text: currentAccount.password, tooltips: ['复制密码', '已复制'] }}
+                  >
+                    {currentAccount.password || '-'}
+                  </Text>
+                </div>
+              </div>
+            </DetailSection>
             <Form form={detailForm} layout="vertical" initialValues={currentAccount}>
               <Form.Item name="status" label="状态">
                 <Select

@@ -200,6 +200,40 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         restart_login.assert_called_once()
         complete_exchange.assert_called_once()
 
+    def test_run_stops_before_create_account_when_registration_requires_phone(self):
+        engine = self._make_engine()
+
+        def fake_create_email():
+            engine.email_info = {"email": "user@example.com", "service_id": "svc-1"}
+            engine.email = "user@example.com"
+            return True
+
+        def fake_validate_otp(_code):
+            engine._post_otp_page_type = "add_phone"
+            engine._post_otp_continue_url = "https://auth.openai.com/add-phone"
+            return True
+
+        with mock.patch.object(engine, "_check_ip_location", return_value=(True, "US")), \
+            mock.patch.object(engine, "_create_email", side_effect=fake_create_email), \
+            mock.patch.object(engine, "_prepare_authorize_flow", return_value=("did", "sentinel")), \
+            mock.patch.object(engine, "_submit_signup_form", return_value=SignupFormResult(success=True, page_type="create_account_password")), \
+            mock.patch.object(engine, "_register_password", return_value=(True, "pw")), \
+            mock.patch.object(engine, "_send_verification_code", return_value=True), \
+            mock.patch.object(engine, "_get_verification_code", return_value="123456"), \
+            mock.patch.object(engine, "_validate_verification_code", side_effect=fake_validate_otp), \
+            mock.patch.object(engine, "_create_user_account") as create_account, \
+            mock.patch.object(engine, "_restart_login_flow") as restart_login, \
+            mock.patch.object(engine, "_complete_token_exchange") as complete_exchange, \
+            mock.patch.object(engine, "_check_email_domain_and_suggest") as suggest:
+            result = engine.run()
+
+        self.assertFalse(result.success)
+        self.assertIn("OpenAI 要求绑定手机号", result.error_message)
+        create_account.assert_not_called()
+        restart_login.assert_not_called()
+        complete_exchange.assert_not_called()
+        suggest.assert_called_once()
+
     def test_run_skips_registration_steps_for_existing_account(self):
         engine = self._make_engine()
 

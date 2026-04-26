@@ -222,6 +222,18 @@ class RefreshTokenRegistrationEngine:
         domain = self.email.rsplit("@", 1)[-1].lower()
         self._log(f"诊断: 注册邮箱域名={domain}")
 
+    def _post_otp_requires_phone(self) -> bool:
+        post_page_type = str(getattr(self, "_post_otp_page_type", "") or "").strip().lower()
+        post_continue_url = str(getattr(self, "_post_otp_continue_url", "") or "").strip().lower()
+        return post_page_type == "add_phone" or "add-phone" in post_continue_url
+
+    def _phone_required_error_message(self) -> str:
+        return (
+            "注册失败：OpenAI 要求绑定手机号。已停止后续 create_account，"
+            "避免继续触发 invalid_auth_step。建议更换住宅代理 IP、邮箱域名，"
+            "降低注册频率，或改用支持手机号验证的注册链路。"
+        )
+
     def _log_response_diagnostics(self, label: str, response) -> None:
         """只记录可关联的响应元信息，不记录 cookie/token/body 全量内容。"""
         safe_header_names = (
@@ -1892,6 +1904,12 @@ class RefreshTokenRegistrationEngine:
                 self._log("8. 校验注册验证码...")
                 if not self._validate_verification_code(code):
                     result.error_message = "验证验证码失败"
+                    if self.email:
+                        self._check_email_domain_and_suggest()
+                    return result
+                if self._post_otp_requires_phone():
+                    result.error_message = self._phone_required_error_message()
+                    self._log(result.error_message, "error")
                     if self.email:
                         self._check_email_domain_and_suggest()
                     return result

@@ -53,6 +53,21 @@ class _FakePlatform(BasePlatform):
         return True
 
 
+class _FailingPlatform(BasePlatform):
+    name = "failing"
+    display_name = "Failing"
+
+    def __init__(self, config=None, mailbox=None):
+        super().__init__(config)
+        self.mailbox = mailbox
+
+    def register(self, email: str, password: str = None) -> Account:
+        raise RuntimeError("获取验证码失败")
+
+    def check_valid(self, account: Account) -> bool:
+        return False
+
+
 class RegisterTaskControlFlowTests(unittest.TestCase):
     def _build_request(self):
         return RegisterTaskRequest(
@@ -96,6 +111,24 @@ class RegisterTaskControlFlowTests(unittest.TestCase):
         self.assertEqual(snapshot["success"], 0)
         self.assertEqual(snapshot["skipped"], 0)
         self.assertEqual(snapshot["errors"], [])
+
+    def test_all_failed_attempts_mark_task_as_failed(self):
+        req = self._build_request()
+        task_id = "task-control-failed"
+        _create_task_record(task_id, req, "manual", None)
+
+        with (
+            patch("core.registry.get", return_value=_FailingPlatform),
+            patch("core.base_mailbox.create_mailbox", return_value=_FakeMailbox()),
+            patch("api.tasks._save_task_log"),
+        ):
+            _run_register(task_id, req)
+
+        snapshot = _task_store.snapshot(task_id)
+        self.assertEqual(snapshot["status"], "failed")
+        self.assertEqual(snapshot["success"], 0)
+        self.assertEqual(snapshot["skipped"], 0)
+        self.assertEqual(snapshot["errors"], ["获取验证码失败"])
 
 
 if __name__ == "__main__":

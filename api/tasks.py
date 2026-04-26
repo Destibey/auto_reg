@@ -356,7 +356,12 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
         _sync_task_snapshot(task_id)
         return
 
-    final_status = "stopped" if stopped or task_control.is_stop_requested() else "done"
+    if stopped or task_control.is_stop_requested():
+        final_status = "stopped"
+    elif errors and success == 0 and skipped == 0:
+        final_status = "failed"
+    else:
+        final_status = "done"
     _task_store.finish(
         task_id,
         status=final_status,
@@ -367,6 +372,8 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
     _sync_task_snapshot(task_id)
     if final_status == "stopped":
         _log(task_id, f"任务已停止: 成功 {success} 个, 跳过 {skipped} 个, 失败 {len(errors)} 个")
+    elif final_status == "failed":
+        _log(task_id, f"任务失败: 成功 {success} 个, 跳过 {skipped} 个, 失败 {len(errors)} 个")
     else:
         _log(task_id, f"完成: 成功 {success} 个, 跳过 {skipped} 个, 失败 {len(errors)} 个")
     _cleanup_old_tasks()
@@ -447,7 +454,7 @@ async def stream_logs(task_id: str, since: int = 0):
             while sent < len(logs):
                 yield f"data: {json.dumps({'line': logs[sent]})}\n\n"
                 sent += 1
-            if status in ("done", "failed"):
+            if status in ("done", "failed", "stopped"):
                 yield f"data: {json.dumps({'done': True, 'status': status})}\n\n"
                 break
             await asyncio.sleep(0.5)

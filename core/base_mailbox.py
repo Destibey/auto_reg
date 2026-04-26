@@ -649,7 +649,7 @@ class GmailIMAPMailbox(BaseMailbox):
             items.append(mailbox)
 
         if self.host.lower() == "imap.gmail.com":
-            for mailbox in ("[Gmail]/Spam", "[Gmail]/Trash"):
+            for mailbox in ("Junk", "Trash", "[Gmail]/Spam", "[Gmail]/Trash"):
                 if mailbox not in seen:
                     seen.add(mailbox)
                     items.append(mailbox)

@@ -668,6 +668,7 @@ export default function Accounts() {
         gmail_imap_mailbox: cfg.gmail_imap_mailbox,
         gmail_imap_target_email: cfg.gmail_imap_target_email,
         gmail_imap_target_domain: cfg.gmail_imap_target_domain,
+        mailbox_otp_timeout_seconds: cfg.mailbox_otp_timeout_seconds,
         smstome_cookie: cfg.smstome_cookie,
         smstome_country_slugs: cfg.smstome_country_slugs,
         smstome_phone_attempts: cfg.smstome_phone_attempts,

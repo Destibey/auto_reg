@@ -85,6 +85,22 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         self.assertEqual(email_service.calls[1]["exclude_codes"], {"111111"})
         self.assertEqual(engine._used_verification_codes, {"111111", "222222"})
 
+    def test_get_verification_code_uses_configured_mailbox_otp_timeout(self):
+        email_service = SequenceEmailService(["123456"])
+        engine = RefreshTokenRegistrationEngine(
+            email_service=email_service,
+            proxy_url="http://127.0.0.1:7890",
+            callback_logger=lambda msg: None,
+            extra_config={"mailbox_otp_timeout_seconds": "45"},
+        )
+        engine.email = "user@example.com"
+        engine.email_info = {"email": "user@example.com", "service_id": "svc-1"}
+
+        code = engine._get_verification_code()
+
+        self.assertEqual(code, "123456")
+        self.assertEqual(email_service.calls[0]["timeout"], 45)
+
     def test_create_email_rejects_blank_email_from_provider(self):
         engine = RefreshTokenRegistrationEngine(
             email_service=EmptyEmailService(),

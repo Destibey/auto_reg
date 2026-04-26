@@ -104,6 +104,7 @@ class RefreshTokenRegistrationEngine:
         callback_logger: Optional[Callable[[str], None]] = None,
         task_uuid: Optional[str] = None,
         browser_mode: str = "headless",
+        extra_config: Optional[dict] = None,
     ):
         """
         初始化注册引擎
@@ -119,6 +120,7 @@ class RefreshTokenRegistrationEngine:
         self.callback_logger = callback_logger or (lambda msg: logger.info(msg))
         self.task_uuid = task_uuid
         self.browser_mode = str(browser_mode or "headless").strip().lower()
+        self.extra_config = dict(extra_config or {})
 
         # 创建 HTTP 客户端
         self.http_client = OpenAIHTTPClient(proxy_url=proxy_url)
@@ -149,6 +151,24 @@ class RefreshTokenRegistrationEngine:
         self._token_acquisition_requires_login: bool = False  # 新注册账号需要二次登录拿 token
         self._post_otp_continue_url: str = ""
         self._post_otp_page_type: str = ""
+
+    def _mailbox_otp_timeout(self, default: int = 120) -> int:
+        candidates = (
+            self.extra_config.get("mailbox_otp_timeout_seconds"),
+            self.extra_config.get("email_otp_timeout_seconds"),
+            self.extra_config.get("otp_timeout"),
+            default,
+        )
+        for value in candidates:
+            if value in (None, ""):
+                continue
+            try:
+                resolved = int(value)
+            except (TypeError, ValueError):
+                continue
+            if resolved > 0:
+                return resolved
+        return default
 
     def _log(self, message: str, level: str = "info"):
         """记录日志"""
@@ -1024,12 +1044,13 @@ class RefreshTokenRegistrationEngine:
                     + ", ".join(sorted(exclude_codes))
                 )
 
-            self._log(f"[步骤 4] 开始调用 email_service.get_verification_code()...")
+            otp_timeout = self._mailbox_otp_timeout()
+            self._log(f"[步骤 4] 开始调用 email_service.get_verification_code(timeout={otp_timeout}s)...")
             try:
                 code = self.email_service.get_verification_code(
                     email=self.email,
                     email_id=email_id,
-                    timeout=700,
+                    timeout=otp_timeout,
                     pattern=OTP_CODE_PATTERN,
                     otp_sent_at=self._otp_sent_at,
                     exclude_codes=exclude_codes,
@@ -1052,7 +1073,7 @@ class RefreshTokenRegistrationEngine:
                 code = self.email_service.get_verification_code(
                     email=self.email,
                     email_id=email_id,
-                    timeout=700,
+                    timeout=otp_timeout,
                     pattern=OTP_CODE_PATTERN,
                     otp_sent_at=self._otp_sent_at,
                     exclude_codes=exclude_codes,

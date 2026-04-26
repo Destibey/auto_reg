@@ -184,13 +184,14 @@ const TAB_ITEMS = [
       {
         title: 'Gmail IMAP',
         provider: 'gmail_imap',
-        desc: '读取 Gmail 验证码；默认会补扫 Spam/Trash，可配合自有域名 catch-all 转发到 Gmail 使用',
+        desc: '读取 Gmail 验证码；默认会补扫 Junk/Trash 和 Gmail 方括号目录，可配合自有域名 catch-all 转发到 Gmail 使用',
         fields: [
           { key: 'gmail_imap_email', label: 'Gmail 登录邮箱', placeholder: 'your@gmail.com' },
           { key: 'gmail_imap_app_password', label: 'Gmail App Password', secret: true, placeholder: '需要 Gmail 应用专用密码' },
           { key: 'gmail_imap_host', label: 'IMAP Host', placeholder: 'imap.gmail.com' },
           { key: 'gmail_imap_port', label: 'IMAP Port', placeholder: '993' },
-          { key: 'gmail_imap_mailbox', label: '邮箱目录', placeholder: 'INBOX,[Gmail]/Spam,[Gmail]/Trash' },
+          { key: 'gmail_imap_mailbox', label: '邮箱目录', placeholder: 'INBOX,Junk,Trash' },
+          { key: 'mailbox_otp_timeout_seconds', label: '邮箱验证码等待秒数', placeholder: '120' },
           { key: 'gmail_imap_target_email', label: '固定注册邮箱（可选）', placeholder: 'jgbbpro@example.com' },
           { key: 'gmail_imap_target_domain', label: 'Catch-all 域名（可选）', placeholder: 'example.com' },
         ],

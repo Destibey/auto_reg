@@ -83,6 +83,7 @@ export default function RegisterTaskPage() {
         gmail_imap_mailbox: cfg.gmail_imap_mailbox || 'INBOX',
         gmail_imap_target_email: cfg.gmail_imap_target_email || '',
         gmail_imap_target_domain: cfg.gmail_imap_target_domain || '',
+        mailbox_otp_timeout_seconds: cfg.mailbox_otp_timeout_seconds || '',
         smstome_cookie: cfg.smstome_cookie || '',
         smstome_country_slugs: cfg.smstome_country_slugs || '',
         smstome_phone_attempts: cfg.smstome_phone_attempts || '',
@@ -151,6 +152,7 @@ export default function RegisterTaskPage() {
       gmail_imap_mailbox: values.gmail_imap_mailbox,
       gmail_imap_target_email: values.gmail_imap_target_email,
       gmail_imap_target_domain: values.gmail_imap_target_domain,
+      mailbox_otp_timeout_seconds: values.mailbox_otp_timeout_seconds,
       smstome_cookie: values.smstome_cookie,
       smstome_country_slugs: values.smstome_country_slugs,
       smstome_phone_attempts: values.smstome_phone_attempts,
@@ -467,9 +469,16 @@ export default function RegisterTaskPage() {
               <Form.Item
                 name="gmail_imap_mailbox"
                 label="邮箱目录"
-                extra="可用英文逗号分隔多个 IMAP 目录；Gmail 默认会补扫 Spam/Trash。"
+                extra="可用英文逗号分隔多个 IMAP 目录；Gmail 默认会补扫 Junk/Trash 和 [Gmail]/Spam/[Gmail]/Trash。"
               >
-                <Input placeholder="INBOX,[Gmail]/Spam,[Gmail]/Trash" />
+                <Input placeholder="INBOX,Junk,Trash" />
+              </Form.Item>
+              <Form.Item
+                name="mailbox_otp_timeout_seconds"
+                label="邮箱验证码等待秒数"
+                extra="默认 120 秒；网络或 IMAP 不稳定时可适当调大，不再固定等待 700 秒。"
+              >
+                <Input placeholder="120" />
               </Form.Item>
               <Form.Item
                 name="gmail_imap_target_email"

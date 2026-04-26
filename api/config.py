@@ -53,6 +53,7 @@ CONFIG_KEYS = [
     "gmail_imap_mailbox",
     "gmail_imap_target_email",
     "gmail_imap_target_domain",
+    "mailbox_otp_timeout_seconds",
     "smstome_cookie",
     "smstome_country_slugs",
     "smstome_phone_attempts",

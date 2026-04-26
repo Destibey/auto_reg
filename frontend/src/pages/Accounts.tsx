@@ -32,6 +32,7 @@ import {
 import { ChatGPTRegistrationModeSwitch } from '@/components/ChatGPTRegistrationModeSwitch'
 import { TaskLogPanel } from '@/components/TaskLogPanel'
 import { usePersistentChatGPTRegistrationMode } from '@/hooks/usePersistentChatGPTRegistrationMode'
+import { CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF } from '@/lib/chatgptRegistrationMode'
 import { parseBooleanConfigValue } from '@/lib/configValueParsers'
 import { buildChatGPTRegistrationRequestAdapter } from '@/lib/chatgptRegistrationRequestAdapter'
 import { apiFetch } from '@/lib/utils'
@@ -626,7 +627,11 @@ export default function Accounts() {
     setRegisterLoading(true)
     try {
       const cfg = await apiFetch('/config')
-      const executorType = normalizeExecutorForPlatform(currentPlatform, cfg.default_executor)
+      const executorType =
+        currentPlatform === 'chatgpt' &&
+        chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+          ? 'protocol'
+          : normalizeExecutorForPlatform(currentPlatform, cfg.default_executor)
       const registerExtra = {
         mail_provider: cfg.mail_provider || 'luckmail',
         laoudo_auth: cfg.laoudo_auth,

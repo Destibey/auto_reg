@@ -32,7 +32,7 @@ export function ChatGPTRegistrationModeSwitch({
     [CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF]: {
       tag: '人工接管',
       color: 'processing',
-      desc: '浏览器人工接管会打开隔离有头浏览器，等待你手动完成注册/OAuth，再从 callback 提取 token。',
+      desc: '浏览器人工接管会固定打开 Camoufox 隔离有头浏览器，等待你手动完成注册/OAuth，再从 callback 提取 token。',
     },
   }[mode]
 

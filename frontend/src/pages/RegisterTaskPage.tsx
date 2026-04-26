@@ -213,7 +213,11 @@ export default function RegisterTaskPage() {
         concurrency: values.concurrency,
         register_delay_seconds: values.register_delay_seconds || 0,
         proxy: values.proxy || null,
-        executor_type: values.executor_type,
+        executor_type:
+          values.platform === 'chatgpt' &&
+          chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+            ? 'protocol'
+            : values.executor_type,
         captcha_solver: values.captcha_solver,
         extra: adaptedRegisterExtra,
       }),
@@ -241,14 +245,21 @@ export default function RegisterTaskPage() {
   const captchaSolver = Form.useWatch('captcha_solver', form)
   const platform = Form.useWatch('platform', form)
   const executorOptions = getExecutorOptions(platform)
+  const isChatGPTManualHandoff =
+    platform === 'chatgpt' &&
+    chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
 
   useEffect(() => {
+    if (isChatGPTManualHandoff) {
+      form.setFieldValue('executor_type', 'protocol')
+      return
+    }
     const currentExecutor = form.getFieldValue('executor_type')
     const normalizedExecutor = normalizeExecutorForPlatform(platform, currentExecutor)
     if (currentExecutor !== normalizedExecutor) {
       form.setFieldValue('executor_type', normalizedExecutor)
     }
-  }, [form, platform])
+  }, [form, platform, isChatGPTManualHandoff])
 
   return (
     <div style={{ maxWidth: 800 }}>
@@ -291,10 +302,25 @@ export default function RegisterTaskPage() {
               ]}
             />
           </Form.Item>
-          <Form.Item name="executor_type" label="执行器" rules={[{ required: true }]}>
-            <Select options={executorOptions} />
-          </Form.Item>
-          {platform === 'chatgpt' && (
+          {isChatGPTManualHandoff ? (
+            <>
+              <Form.Item name="executor_type" hidden>
+                <Input />
+              </Form.Item>
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="人工接管模式不使用执行器选择"
+                description="该模式固定启动 Camoufox 隔离有头浏览器并等待你手动完成 OAuth callback；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
+              />
+            </>
+          ) : (
+            <Form.Item name="executor_type" label="执行器" rules={[{ required: true }]}>
+              <Select options={executorOptions} />
+            </Form.Item>
+          )}
+          {platform === 'chatgpt' && !isChatGPTManualHandoff && (
             <Alert
               type="info"
               showIcon

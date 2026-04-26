@@ -24,7 +24,7 @@ from .oauth import OAuthManager, OAuthStart
 from .refresh_token_registration_engine import RegistrationResult
 from .utils import generate_random_name, generate_random_password
 
-DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://chatgpt.com/"
+DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://auth.openai.com/create-account"
 
 
 @dataclass
@@ -329,18 +329,64 @@ class BrowserManualHandoffRegistrationEngine:
             return False
         script = """
 (target) => {
-  const nodes = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]'));
-  return nodes.some(node => {
+  const collect = (root, acc = []) => {
+    if (!root) return acc;
+    const nodes = root.querySelectorAll ? root.querySelectorAll('input, textarea, [contenteditable="true"]') : [];
+    nodes.forEach(node => {
+      acc.push(node);
+      if (node.shadowRoot) collect(node.shadowRoot, acc);
+    });
+    const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
+    all.forEach(node => {
+      if (node.shadowRoot) collect(node.shadowRoot, acc);
+    });
+    return acc;
+  };
+  const values = collect(document).map(node => {
     const value = 'value' in node ? node.value : '';
     const text = node.textContent || '';
-    return String(value || text || '').includes(target);
-  });
+    return String(value || text || '').trim();
+  }).filter(Boolean);
+  if (values.some(value => value.includes(target))) return true;
+  const targetParts = target.split(/\\s+/).filter(Boolean);
+  if (targetParts.length <= 1) return false;
+  const joined = values.join(' ');
+  return targetParts.every(part => joined.includes(part));
 }
 """
         try:
             return bool(page.evaluate(script, target))
         except Exception:
             return False
+
+    def _iter_session_pages(self, session: ManualBrowserSession) -> list[object]:
+        pages = []
+        seen = set()
+
+        def add_page(page):
+            if page is None:
+                return
+            ident = id(page)
+            if ident in seen:
+                return
+            seen.add(ident)
+            pages.append(page)
+
+        try:
+            if session.browser is not None:
+                for context in session.browser.contexts:
+                    for page in context.pages:
+                        add_page(page)
+        except Exception:
+            pass
+        try:
+            if session.context is not None:
+                for page in session.context.pages:
+                    add_page(page)
+        except Exception:
+            pass
+        add_page(getattr(session, "page", None))
+        return pages
 
     def _session_has_input_value(self, session: ManualBrowserSession, value: str) -> bool:
         try:
@@ -378,40 +424,69 @@ class BrowserManualHandoffRegistrationEngine:
     def _install_clipboard_paste_watcher(self, session: ManualBrowserSession) -> None:
         if not self._manual_clipboard_enabled():
             return
-        page = getattr(session, "page", None)
-        if page is None:
-            return
 
         def on_paste(text=""):
             self._handle_page_paste(str(text or ""))
 
-        try:
-            page.expose_function("__autoregClipboardPasted", on_paste)
-        except Exception:
-            pass
         script = """
 (() => {
+  const readElementValue = element => {
+    if (!element) return '';
+    const value = 'value' in element ? element.value : '';
+    const text = element.textContent || '';
+    return String(value || text || '').trim();
+  };
+  const report = text => {
+    if (!text) return;
+    if (window.__autoregClipboardPasted) {
+      Promise.resolve(window.__autoregClipboardPasted(text)).catch(() => {});
+    }
+  };
+  const reportActiveElement = () => {
+    const active = document.activeElement;
+    report(readElementValue(active));
+  };
   const install = () => {
     if (window.__autoregClipboardWatcherInstalled) return;
     window.__autoregClipboardWatcherInstalled = true;
     document.addEventListener('paste', event => {
       const text = event.clipboardData ? event.clipboardData.getData('text') : '';
-      if (window.__autoregClipboardPasted) {
-        Promise.resolve(window.__autoregClipboardPasted(text)).catch(() => {});
-      }
+      report(text);
+      window.setTimeout(reportActiveElement, 0);
+      window.setTimeout(reportActiveElement, 80);
     }, true);
+    ['input', 'change', 'keyup'].forEach(type => {
+      document.addEventListener(type, event => {
+        report(readElementValue(event.target));
+      }, true);
+    });
   };
   install();
 })();
 """
         try:
-            page.add_init_script(script)
+            if session.context is not None:
+                session.context.expose_function("__autoregClipboardPasted", on_paste)
         except Exception:
             pass
         try:
-            page.evaluate(script)
+            if session.context is not None:
+                session.context.add_init_script(script)
         except Exception:
             pass
+        for page in self._iter_session_pages(session):
+            try:
+                page.expose_function("__autoregClipboardPasted", on_paste)
+            except Exception:
+                pass
+            try:
+                page.add_init_script(script)
+            except Exception:
+                pass
+            try:
+                page.evaluate(script)
+            except Exception:
+                pass
 
     def _create_email(self) -> str:
         if self.email:
@@ -806,6 +881,7 @@ class BrowserManualHandoffRegistrationEngine:
                 if not warned_existing_session:
                     self._log("检测到已有 ChatGPT 登录态，暂不判定为本次注册成功；请先退出旧账号后继续注册。", "warning")
                     warned_existing_session = True
+            self._install_clipboard_paste_watcher(session)
             self._advance_clipboard_from_visible_inputs(session)
             self._poll_email_code_for_user()
             time.sleep(1)
@@ -829,6 +905,7 @@ class BrowserManualHandoffRegistrationEngine:
                 self._log("检测到 OAuth callback，开始交换 token...")
                 self._checkpoint()
                 return True, self._exchange_callback(callback_url, oauth_start)
+            self._install_clipboard_paste_watcher(session)
             self._advance_clipboard_from_visible_inputs(session)
             time.sleep(1)
         return False, "等待 OAuth callback 超时"
@@ -915,7 +992,7 @@ class BrowserManualHandoffRegistrationEngine:
             self._log(f"已打开隔离浏览器 provider={session.provider}")
             self._install_clipboard_paste_watcher(session)
             signup_url = self._manual_signup_url()
-            self._log(f"打开普通 ChatGPT 注册入口: {signup_url}")
+            self._log(f"打开 ChatGPT 直接注册入口: {signup_url}")
             session.page.goto(signup_url, wait_until="domcontentloaded")
 
             ok, payload = self._wait_for_manual_completion(session)

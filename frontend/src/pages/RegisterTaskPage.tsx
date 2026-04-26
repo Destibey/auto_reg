@@ -320,7 +320,7 @@ export default function RegisterTaskPage() {
                 showIcon
                 style={{ marginBottom: 16 }}
                 message="人工接管模式不使用执行器选择"
-                description="该模式固定启动 Camoufox 打开普通 ChatGPT 入口并等待你手动完成注册；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
+                description="该模式固定启动 Camoufox 打开 ChatGPT 直接注册页并等待你手动完成注册；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
               />
             </>
           ) : (
@@ -379,8 +379,8 @@ export default function RegisterTaskPage() {
                 message="浏览器人工接管模式"
                 description={
                   manualTokenCallbackEnabled
-                    ? '系统先打开 Camoufox 普通 ChatGPT 注册入口；检测到你进入 ChatGPT 后，才会打开第二段 OAuth 授权页取 token。若进入 add-phone，会直接失败，不会自动处理手机号。'
-                    : '系统只打开 Camoufox 普通 ChatGPT 注册入口；验证码、Cloudflare、手机号页都需要你本人处理。若进入 add-phone，会直接失败，不会自动处理手机号。当前只保存邮箱和密码，不自动取 token。'
+                    ? '系统先打开 Camoufox ChatGPT 直接注册页；检测到你进入 ChatGPT 后，才会打开第二段 OAuth 授权页取 token。若进入 add-phone，会直接失败，不会自动处理手机号。'
+                    : '系统只打开 Camoufox ChatGPT 直接注册页；验证码、Cloudflare、手机号页都需要你本人处理。若进入 add-phone，会直接失败，不会自动处理手机号。当前只保存邮箱和密码，不自动取 token。'
                 }
               />
             )}
@@ -390,7 +390,7 @@ export default function RegisterTaskPage() {
           chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF && (
             <Card title="ChatGPT 浏览器人工接管" style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                使用本地 Camoufox 隔离有头浏览器。AutoReg 只负责打开普通 ChatGPT 入口、提示邮箱验证码并等待你完成注册；页面内操作由你手动完成。
+                使用本地 Camoufox 隔离有头浏览器。AutoReg 只负责打开 ChatGPT 直接注册页、提示邮箱验证码并等待你完成注册；页面内操作由你手动完成。
               </Text>
               <Form.Item name="chatgpt_manual_browser_provider" hidden>
                 <Input />

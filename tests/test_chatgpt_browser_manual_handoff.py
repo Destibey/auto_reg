@@ -46,7 +46,11 @@ class FakePage:
         self.evaluated_scripts.append(script)
         if args:
             target = str(args[0])
-            return any(target in value for value in self.input_values)
+            if any(target in value for value in self.input_values):
+                return True
+            parts = [part for part in target.split() if part]
+            joined = " ".join(self.input_values)
+            return len(parts) > 1 and all(part in joined for part in parts)
         return None
 
 
@@ -111,6 +115,12 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertEqual(session.page.goto_url, DEFAULT_CHATGPT_MANUAL_SIGNUP_URL)
         session.close()
         self.assertTrue(session.closed)
+
+    def test_default_signup_url_opens_direct_create_account_page(self):
+        self.assertEqual(
+            DEFAULT_CHATGPT_MANUAL_SIGNUP_URL,
+            "https://auth.openai.com/create-account",
+        )
 
     def test_token_callback_stage_runs_only_when_enabled(self):
         session = FakeBrowserSession()
@@ -389,6 +399,50 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             ],
         )
         self.assertFalse(any("生日" in log or "birth" in log.lower() for log in engine.logs))
+
+    def test_manual_clipboard_advances_when_name_is_split_across_inputs(self):
+        session = FakeBrowserSession()
+        engine = self._make_engine()
+        engine.extra_config["chatgpt_manual_clipboard_sequence"] = True
+        copied = []
+
+        with mock.patch.object(engine, "_set_system_clipboard", side_effect=lambda value: copied.append(value) or True):
+            engine._prepare_manual_clipboard("manual@example.com", "pw-demo")
+            engine._handle_page_paste("manual@example.com")
+            engine._handle_page_paste("pw-demo")
+            engine._append_manual_clipboard_items(
+                [("验证码", "123456"), ("姓名", "Jane Miller"), ("年龄", "28")]
+            )
+            engine._handle_page_paste("123456")
+            session.page.input_values = ["Jane", "Miller"]
+            engine._advance_clipboard_from_visible_inputs(session)
+
+        self.assertEqual(
+            copied,
+            ["manual@example.com", "pw-demo", "123456", "Jane Miller", "28"],
+        )
+
+    def test_manual_clipboard_advances_from_input_event_value(self):
+        session = FakeBrowserSession()
+        engine = self._make_engine()
+        engine.extra_config["chatgpt_manual_clipboard_sequence"] = True
+        copied = []
+
+        with mock.patch.object(engine, "_set_system_clipboard", side_effect=lambda value: copied.append(value) or True):
+            engine._prepare_manual_clipboard("manual@example.com", "pw-demo")
+            engine._handle_page_paste("manual@example.com")
+            engine._handle_page_paste("pw-demo")
+            engine._append_manual_clipboard_items(
+                [("验证码", "123456"), ("姓名", "Jane Miller"), ("年龄", "28")]
+            )
+            engine._handle_page_paste("123456")
+            engine._install_clipboard_paste_watcher(session)
+            session.page.exposed["__autoregClipboardPasted"]("Jane Miller")
+
+        self.assertEqual(
+            copied,
+            ["manual@example.com", "pw-demo", "123456", "Jane Miller", "28"],
+        )
 
     def test_manual_clipboard_advances_when_email_appears_in_input(self):
         session = FakeBrowserSession()

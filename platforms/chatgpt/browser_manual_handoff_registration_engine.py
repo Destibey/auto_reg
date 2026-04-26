@@ -134,6 +134,7 @@ class BrowserManualHandoffRegistrationEngine:
         self._manual_user_info: dict[str, str] = {}
         self._assisted_verification_code = ""
         self._assisted_logged_events: set[str] = set()
+        self._assisted_handoff_clipboard_prepared = False
 
     def _log(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -292,6 +293,23 @@ class BrowserManualHandoffRegistrationEngine:
             should_copy_now = self._clipboard_index >= len(self._clipboard_sequence) - len(clean_items)
         if should_copy_now:
             self._copy_next_clipboard_item()
+
+    def _prepare_assisted_handoff_clipboard(self) -> None:
+        if self._assisted_handoff_clipboard_prepared:
+            return
+        self._assisted_handoff_clipboard_prepared = True
+        self._prepare_manual_clipboard(self.email or "", self.password or "")
+        items: list[tuple[str, str]] = []
+        if self._assisted_verification_code:
+            items.append(("验证码", self._assisted_verification_code))
+        user_info = self._manual_signup_user_info()
+        items.extend(
+            [
+                ("姓名", user_info.get("name", "")),
+                ("年龄", user_info.get("age", "")),
+            ]
+        )
+        self._append_manual_clipboard_items(items)
 
     def _manual_signup_user_info(self) -> dict[str, str]:
         if self._manual_user_info:
@@ -921,17 +939,10 @@ class BrowserManualHandoffRegistrationEngine:
             return ""
         self._used_verification_codes.add(code_text)
         self._assisted_verification_code = code_text
-        self._log(f"自动辅助验证码: {code_text}（将尝试自动填入；也已保留人工接管兜底）")
+        self._log(f"自动辅助验证码: {code_text}（将尝试自动填入；如需人工接管会再写入剪贴板）")
         user_info = self._manual_signup_user_info()
         self._log(
             f"自动辅助资料: 姓名={user_info['name']}, 年龄={user_info['age']}"
-        )
-        self._append_manual_clipboard_items(
-            [
-                ("验证码", code_text),
-                ("姓名", user_info["name"]),
-                ("年龄", user_info["age"]),
-            ]
         )
         return code_text
 
@@ -957,12 +968,14 @@ class BrowserManualHandoffRegistrationEngine:
             if action in actions:
                 self._log_assisted_event_once(action, message)
         if result.get("checkboxBlocked"):
+            self._prepare_assisted_handoff_clipboard()
             self._log_assisted_event_once(
                 "checkbox_blocked",
                 "检测到注册资料页仍有未勾选确认项；已停止自动点击下一步，请你手动勾选并继续。",
                 "warning",
             )
         if result.get("challengeDetected"):
+            self._prepare_assisted_handoff_clipboard()
             self._log_assisted_event_once(
                 "challenge_detected",
                 "检测到 CAPTCHA 或人工验证挑战；自动辅助不会处理该步骤，请你在浏览器中手动完成。",
@@ -1362,10 +1375,11 @@ class BrowserManualHandoffRegistrationEngine:
                 if not warned_existing_session:
                     self._log("检测到已有 ChatGPT 登录态，暂不判定为本次注册成功；请先退出旧账号后继续注册。", "warning")
                     warned_existing_session = True
-            self._install_clipboard_paste_watcher(session)
-            self._advance_clipboard_from_visible_inputs(session)
             if self._assist_signup_pages(session):
                 seen_signup_flow = True
+            if self._assisted_handoff_clipboard_prepared:
+                self._install_clipboard_paste_watcher(session)
+                self._advance_clipboard_from_visible_inputs(session)
             time.sleep(1)
         return False, "等待自动辅助注册完成超时"
 
@@ -1469,11 +1483,13 @@ class BrowserManualHandoffRegistrationEngine:
             result.password = password
             self._log(f"人工接管邮箱: {email}")
             self._log(f"人工接管密码: {password}")
-            self._prepare_manual_clipboard(email, password)
+            if not self._assisted_signup_enabled():
+                self._prepare_manual_clipboard(email, password)
 
             session = self._open_browser_session()
             self._log(f"已打开隔离浏览器 provider={session.provider}")
-            self._install_clipboard_paste_watcher(session)
+            if not self._assisted_signup_enabled():
+                self._install_clipboard_paste_watcher(session)
             signup_url = self._manual_signup_url()
             self._log(f"打开普通 ChatGPT 入口: {signup_url}")
             session.page.goto(signup_url, wait_until="domcontentloaded")

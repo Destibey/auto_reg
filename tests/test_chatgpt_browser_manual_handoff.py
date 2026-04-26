@@ -271,6 +271,43 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         assisted_wait.assert_called_once_with(session)
         manual_wait.assert_not_called()
 
+    def test_assisted_signup_does_not_prepare_clipboard_before_handoff(self):
+        session = FakeBrowserSession()
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_assisted_signup": True,
+                "chatgpt_manual_handoff_timeout_seconds": 5,
+            },
+        )
+        engine.password = "pw-demo"
+
+        with mock.patch.object(engine, "_open_browser_session", return_value=session):
+            with mock.patch.object(engine, "_wait_for_assisted_signup_completion", return_value=(True, "ok")):
+                with mock.patch.object(engine, "_prepare_manual_clipboard") as prepare_clipboard:
+                    with mock.patch.object(engine, "_install_clipboard_paste_watcher") as install_watcher:
+                        result = engine.run()
+
+        self.assertTrue(result.success)
+        prepare_clipboard.assert_not_called()
+        install_watcher.assert_not_called()
+
+    def test_assisted_code_polling_keeps_clipboard_quiet_until_handoff(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeCodeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_manual_email_poll_interval_seconds": 0},
+        )
+        engine.email = "manual@example.com"
+        engine.email_info = {"service_id": "mail-1"}
+
+        with mock.patch.object(engine, "_append_manual_clipboard_items") as append_clipboard:
+            code = engine._poll_email_code_for_assisted_signup()
+
+        self.assertEqual(code, "123456")
+        append_clipboard.assert_not_called()
+
     def test_assisted_signup_fills_known_fields_and_clicks_required_consent(self):
         page = FakeAssistedPage(
             {

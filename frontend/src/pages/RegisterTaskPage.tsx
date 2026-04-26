@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Alert,
   Card,
@@ -32,13 +32,102 @@ import { getExecutorOptions, normalizeExecutorForPlatform } from '@/lib/platform
 import { apiFetch } from '@/lib/utils'
 
 const { Text } = Typography
+const REGISTER_TASK_MONITOR_STORAGE_KEY = 'autoreg.registerTask.currentTaskId'
+const TERMINAL_TASK_STATUSES = new Set(['done', 'failed', 'stopped'])
+
+function isTerminalTaskStatus(status?: string) {
+  return TERMINAL_TASK_STATUSES.has(String(status || ''))
+}
 
 export default function RegisterTaskPage() {
   const [form] = Form.useForm()
   const [task, setTask] = useState<any>(null)
   const [polling, setPolling] = useState(false)
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const { mode: chatgptRegistrationMode, setMode: setChatgptRegistrationMode } =
     usePersistentChatGPTRegistrationMode()
+
+  function clearPollTimer() {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+  }
+
+  function clearCurrentTaskMonitor() {
+    clearPollTimer()
+    window.localStorage.removeItem(REGISTER_TASK_MONITOR_STORAGE_KEY)
+    setTask(null)
+    setPolling(false)
+  }
+
+  async function loadTaskSnapshot(id: string) {
+    try {
+      const snapshot = await apiFetch(`/tasks/${id}`)
+      setTask(snapshot)
+      if (isTerminalTaskStatus(snapshot.status)) {
+        setPolling(false)
+      }
+      return snapshot
+    } catch (_err) {
+      window.localStorage.removeItem(REGISTER_TASK_MONITOR_STORAGE_KEY)
+      setTask(null)
+      setPolling(false)
+      return null
+    }
+  }
+
+  function pollTask(id: string, options: { persist?: boolean } = {}) {
+    const shouldPersist = options.persist !== false
+    if (shouldPersist) {
+      window.localStorage.setItem(REGISTER_TASK_MONITOR_STORAGE_KEY, id)
+    }
+    clearPollTimer()
+    setPolling(true)
+    setTask((current: any) => (
+      current?.id === id ? current : { id, status: 'loading', progress: '恢复中' }
+    ))
+
+    const tick = async () => {
+      const snapshot = await loadTaskSnapshot(id)
+      if (!snapshot || isTerminalTaskStatus(snapshot.status)) {
+        clearPollTimer()
+        setPolling(false)
+        if (snapshot?.cashier_urls && snapshot.cashier_urls.length > 0) {
+          snapshot.cashier_urls.forEach((url: string) => window.open(url, '_blank'))
+        }
+      }
+    }
+
+    void tick()
+    pollIntervalRef.current = setInterval(tick, 2000)
+  }
+
+  useEffect(() => {
+    return () => clearPollTimer()
+  }, [])
+
+  useEffect(() => {
+    const restoreTaskMonitor = async () => {
+      const storedTaskId = window.localStorage.getItem(REGISTER_TASK_MONITOR_STORAGE_KEY)
+      if (storedTaskId) {
+        pollTask(storedTaskId, { persist: false })
+        return
+      }
+      try {
+        const tasks = await apiFetch('/tasks')
+        const activeTask = Array.isArray(tasks)
+          ? [...tasks].reverse().find((item: any) => item?.id && !isTerminalTaskStatus(item.status))
+          : null
+        if (activeTask?.id) {
+          pollTask(activeTask.id)
+        }
+      } catch (_err) {
+        // 没有可恢复任务时保持创建任务表单即可。
+      }
+    }
+    void restoreTaskMonitor()
+  }, [])
 
   useEffect(() => {
     apiFetch('/config').then((cfg) => {
@@ -235,23 +324,8 @@ export default function RegisterTaskPage() {
         extra: adaptedRegisterExtra,
       }),
     })
-    setTask(res)
-    setPolling(true)
+    setTask({ id: res.task_id, status: 'pending', progress: `0/${values.count}` })
     pollTask(res.task_id)
-  }
-
-  const pollTask = async (id: string) => {
-    const interval = setInterval(async () => {
-      const t = await apiFetch(`/tasks/${id}`)
-      setTask(t)
-      if (t.status === 'done' || t.status === 'failed' || t.status === 'stopped') {
-        clearInterval(interval)
-        setPolling(false)
-        if (t.cashier_urls && t.cashier_urls.length > 0) {
-          t.cashier_urls.forEach((url: string) => window.open(url, '_blank'))
-        }
-      }
-    }, 2000)
   }
 
   const mailProvider = Form.useWatch('mail_provider', form)
@@ -745,6 +819,12 @@ export default function RegisterTaskPage() {
               {task.status}
             </Tag>
           </Space>
+        } extra={
+          task.id ? (
+            <Button size="small" onClick={clearCurrentTaskMonitor}>
+              清除当前监控
+            </Button>
+          ) : null
         } style={{ marginTop: 16 }}>
           <Descriptions column={1} size="small">
             <Descriptions.Item label="任务 ID">

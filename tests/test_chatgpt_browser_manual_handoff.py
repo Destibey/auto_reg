@@ -239,7 +239,7 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         assisted_wait.assert_called_once_with(session)
         manual_wait.assert_not_called()
 
-    def test_assisted_signup_fills_known_fields_and_waits_for_checkbox(self):
+    def test_assisted_signup_fills_known_fields_and_clicks_required_consent(self):
         page = FakeAssistedPage(
             {
                 "actions": [
@@ -248,8 +248,9 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
                     "filled_code",
                     "filled_name",
                     "filled_age",
+                    "clicked_required_consent",
                 ],
-                "checkboxBlocked": True,
+                "checkboxBlocked": False,
             }
         )
         session = FakeBrowserSession(page=page)
@@ -278,7 +279,15 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertEqual(page.payloads[-1]["code"], "123456")
         self.assertEqual(page.payloads[-1]["name"], "Jane Miller")
         self.assertEqual(page.payloads[-1]["age"], "28")
-        self.assertTrue(any("勾选" in log for log in engine.logs))
+        self.assertTrue(any("同意确认框" in log for log in engine.logs))
+        self.assertFalse(any("人工勾选" in log for log in engine.logs))
+
+    def test_assisted_signup_script_defers_continue_after_fresh_fill(self):
+        script = BrowserManualHandoffRegistrationEngine._assisted_signup_script()
+
+        self.assertIn("clicked_required_consent", script)
+        self.assertIn("const hasFreshFill", script)
+        self.assertIn("&& !hasFreshFill", script)
 
     def test_assisted_signup_can_click_signup_entry_before_form_fields(self):
         page = FakeAssistedPage({"actions": ["clicked_signup_entry"]})

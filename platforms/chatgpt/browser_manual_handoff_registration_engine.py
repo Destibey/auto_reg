@@ -947,7 +947,8 @@ class BrowserManualHandoffRegistrationEngine:
             "filled_name": "自动辅助已填写姓名。",
             "filled_age": "自动辅助已填写年龄。",
             "clicked_signup_entry": "自动辅助已点击普通 ChatGPT 页面的注册入口。",
-            "clicked_continue": "自动辅助已点击继续/下一步。",
+            "clicked_required_consent": "自动辅助已勾选注册资料页的同意确认框。",
+            "clicked_continue": "自动辅助已尝试点击继续/下一步。",
         }
         for action, message in action_messages.items():
             if action in actions:
@@ -955,7 +956,7 @@ class BrowserManualHandoffRegistrationEngine:
         if result.get("checkboxBlocked"):
             self._log_assisted_event_once(
                 "checkbox_blocked",
-                "检测到注册资料页需要人工勾选确认；已停止自动点击下一步，请你手动勾选并继续。",
+                "检测到注册资料页仍有未勾选确认项；已停止自动点击下一步，请你手动勾选并继续。",
                 "warning",
             )
         if result.get("challengeDetected"):
@@ -988,7 +989,12 @@ class BrowserManualHandoffRegistrationEngine:
         return changed
 
     def _assist_signup_page(self, page, payload: dict) -> dict:
-        script = """
+        result = page.evaluate(self._assisted_signup_script(), payload)
+        return result if isinstance(result, dict) else {}
+
+    @staticmethod
+    def _assisted_signup_script() -> str:
+        return """
 (payload) => {
   const result = { actions: [], checkboxBlocked: false, challengeDetected: false };
   const lower = value => String(value || '').toLowerCase();
@@ -1152,6 +1158,7 @@ class BrowserManualHandoffRegistrationEngine:
     const type = lower(element.getAttribute('type'));
     return (type === 'number' || /(age|your age)/.test(text)) && !/(birth|birthday|date|day|month|year|code|otp)/.test(text);
   });
+  const hasFreshFill = result.actions.some(action => String(action).startsWith('filled_'));
   const codeAlreadyFilled = payload.code && controls.map(currentValue).join('').includes(String(payload.code));
   const nameAlreadyFilled = payload.name && String(payload.name).split(/\\s+/).filter(Boolean).every(part => {
     return controls.map(currentValue).join(' ').includes(part);
@@ -1161,16 +1168,51 @@ class BrowserManualHandoffRegistrationEngine:
     return (type === 'number' || /(age|your age)/.test(text)) && !/(birth|birthday|date|day|month|year|code|otp)/.test(text);
   });
   const checkboxes = collect('input[type="checkbox"], [role="checkbox"]').filter(visible);
-  const unchecked = checkboxes.some(element => {
-    if (element.matches && element.matches('input[type="checkbox"]')) return !element.checked;
-    return lower(element.getAttribute('aria-checked')) !== 'true';
-  });
-  if (unchecked && (
+  const isChecked = element => {
+    if (element.matches && element.matches('input[type="checkbox"]')) return Boolean(element.checked);
+    return lower(element.getAttribute('aria-checked')) === 'true';
+  };
+  const clickElement = element => {
+    if (!element) return false;
+    try {
+      if (element.scrollIntoView) element.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch (_err) {}
+    try {
+      if (element.focus) element.focus();
+    } catch (_err) {}
+    try {
+      element.click();
+      return true;
+    } catch (_err) {
+      try {
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        return true;
+      } catch (_fallbackErr) {
+        return false;
+      }
+    }
+  };
+  const uncheckedBoxes = checkboxes.filter(element => !isChecked(element));
+  const hasProfileFields =
     result.actions.includes('filled_name') ||
     result.actions.includes('filled_age') ||
     nameAlreadyFilled ||
-    ageAlreadyFilled
-  )) {
+    ageAlreadyFilled;
+  if (uncheckedBoxes.length && hasProfileFields) {
+    const preferred = uncheckedBoxes.find(element => {
+      const text = attrText(element);
+      return /(agree|consent|following|all|mandatory|collection|third-party|overseas|同意|全部|필수|동의|개인정보)/.test(text);
+    }) || uncheckedBoxes[0];
+    if (clickElement(preferred)) {
+      result.actions.push('clicked_required_consent');
+    } else {
+      result.checkboxBlocked = true;
+    }
+  }
+  const unchecked = checkboxes.some(element => {
+    return !isChecked(element);
+  });
+  if (unchecked && hasProfileFields && !result.actions.includes('clicked_required_consent')) {
     result.checkboxBlocked = true;
   }
   const readyToContinue =
@@ -1183,7 +1225,11 @@ class BrowserManualHandoffRegistrationEngine:
     codeAlreadyFilled ||
     nameAlreadyFilled ||
     ageAlreadyFilled;
-  const canClick = readyToContinue && !result.checkboxBlocked && !result.challengeDetected;
+  const canClick = readyToContinue
+    && !hasFreshFill
+    && !result.actions.includes('clicked_required_consent')
+    && !result.checkboxBlocked
+    && !result.challengeDetected;
   if (canClick) {
     const button = collect('button, [role="button"], input[type="submit"], input[type="button"]').find(element => {
       if (!visible(element)) return false;
@@ -1196,15 +1242,14 @@ class BrowserManualHandoffRegistrationEngine:
       return /(continue|next|submit|verify|sign up|create account|继续|下一步|提交|验证|注册)/.test(text);
     });
     if (button) {
-      button.click();
-      result.actions.push('clicked_continue');
+      if (clickElement(button)) {
+        result.actions.push('clicked_continue');
+      }
     }
   }
   return result;
 }
 """
-        result = page.evaluate(script, payload)
-        return result if isinstance(result, dict) else {}
 
     def _exchange_callback(self, callback_url: str, oauth_start: OAuthStart) -> dict:
         return self.oauth_manager.handle_callback(

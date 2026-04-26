@@ -22,6 +22,7 @@ import {
 import { ChatGPTRegistrationModeSwitch } from '@/components/ChatGPTRegistrationModeSwitch'
 import { TaskLogPanel } from '@/components/TaskLogPanel'
 import { usePersistentChatGPTRegistrationMode } from '@/hooks/usePersistentChatGPTRegistrationMode'
+import { CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF } from '@/lib/chatgptRegistrationMode'
 import { parseBooleanConfigValue } from '@/lib/configValueParsers'
 import { buildChatGPTRegistrationRequestAdapter } from '@/lib/chatgptRegistrationRequestAdapter'
 import { getExecutorOptions, normalizeExecutorForPlatform } from '@/lib/platformExecutorOptions'
@@ -90,6 +91,15 @@ export default function RegisterTaskPage() {
         smstome_otp_timeout_seconds: cfg.smstome_otp_timeout_seconds || '',
         smstome_poll_interval_seconds: cfg.smstome_poll_interval_seconds || '',
         smstome_sync_max_pages_per_country: cfg.smstome_sync_max_pages_per_country || '',
+        chatgpt_manual_browser_provider: cfg.chatgpt_manual_browser_provider || 'adspower',
+        chatgpt_adspower_api_url: cfg.chatgpt_adspower_api_url || 'http://local.adspower.net:50325',
+        chatgpt_adspower_profile_id: cfg.chatgpt_adspower_profile_id || '',
+        chatgpt_adspower_serial_number: cfg.chatgpt_adspower_serial_number || '',
+        chatgpt_adspower_api_key: cfg.chatgpt_adspower_api_key || '',
+        chatgpt_manual_handoff_timeout_seconds: cfg.chatgpt_manual_handoff_timeout_seconds || '900',
+        chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds || '10',
+        chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir || '',
+        chatgpt_manual_browser_keep_open: parseBooleanConfigValue(cfg.chatgpt_manual_browser_keep_open),
         luckmail_base_url: cfg.luckmail_base_url || 'https://mails.luckyous.com/',
         luckmail_api_key: cfg.luckmail_api_key || '',
         luckmail_email_type: cfg.luckmail_email_type || '',
@@ -159,6 +169,15 @@ export default function RegisterTaskPage() {
       smstome_otp_timeout_seconds: values.smstome_otp_timeout_seconds,
       smstome_poll_interval_seconds: values.smstome_poll_interval_seconds,
       smstome_sync_max_pages_per_country: values.smstome_sync_max_pages_per_country,
+      chatgpt_manual_browser_provider: values.chatgpt_manual_browser_provider,
+      chatgpt_adspower_api_url: values.chatgpt_adspower_api_url,
+      chatgpt_adspower_profile_id: values.chatgpt_adspower_profile_id,
+      chatgpt_adspower_serial_number: values.chatgpt_adspower_serial_number,
+      chatgpt_adspower_api_key: values.chatgpt_adspower_api_key,
+      chatgpt_manual_handoff_timeout_seconds: values.chatgpt_manual_handoff_timeout_seconds,
+      chatgpt_manual_email_poll_interval_seconds: values.chatgpt_manual_email_poll_interval_seconds,
+      chatgpt_manual_browser_profile_dir: values.chatgpt_manual_browser_profile_dir,
+      chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       luckmail_base_url: values.luckmail_base_url,
       luckmail_api_key: values.luckmail_api_key,
       luckmail_email_type: values.luckmail_email_type,
@@ -252,6 +271,11 @@ export default function RegisterTaskPage() {
         maliapi_base_url: 'https://maliapi.215.im/v1',
         maliapi_auto_domain_strategy: 'balanced',
         solver_url: 'http://localhost:8889',
+        chatgpt_manual_browser_provider: 'adspower',
+        chatgpt_adspower_api_url: 'http://local.adspower.net:50325',
+        chatgpt_manual_handoff_timeout_seconds: '900',
+        chatgpt_manual_email_poll_interval_seconds: '10',
+        chatgpt_manual_browser_keep_open: false,
       }}>
         <Card title="基本配置" style={{ marginBottom: 16 }}>
           <Form.Item name="platform" label="平台" rules={[{ required: true }]}>
@@ -312,7 +336,66 @@ export default function RegisterTaskPage() {
               />
             </Form.Item>
           )}
+          {platform === 'chatgpt' &&
+            chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="浏览器人工接管模式"
+                description="系统只打开隔离有头浏览器并等待 OAuth callback；验证码、Cloudflare、手机号页都需要你本人处理。若进入 add-phone，会直接失败，不会自动处理手机号。"
+              />
+            )}
         </Card>
+
+        {platform === 'chatgpt' &&
+          chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF && (
+            <Card title="ChatGPT 浏览器人工接管" style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                AdsPower 模式会通过 Local API 启动 SunBrowser profile，并用 Playwright 连接返回的 CDP WebSocket。
+              </Text>
+              <Form.Item name="chatgpt_manual_browser_provider" label="浏览器后端">
+                <Select
+                  options={[
+                    { value: 'adspower', label: 'AdsPower / SunBrowser' },
+                    { value: 'playwright', label: '本地隔离 Chromium' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item name="chatgpt_adspower_api_url" label="AdsPower Local API">
+                <Input placeholder="http://local.adspower.net:50325" />
+              </Form.Item>
+              <Space style={{ width: '100%' }}>
+                <Form.Item name="chatgpt_adspower_profile_id" label="AdsPower Profile ID" style={{ flex: 1 }}>
+                  <Input placeholder="user_id / profile_id" />
+                </Form.Item>
+                <Form.Item name="chatgpt_adspower_serial_number" label="Serial Number" style={{ flex: 1 }}>
+                  <Input placeholder="未填 Profile ID 时使用" />
+                </Form.Item>
+              </Space>
+              <Form.Item name="chatgpt_adspower_api_key" label="AdsPower API Key（可选）">
+                <Input.Password placeholder="启用安全校验时填写" />
+              </Form.Item>
+              <Space style={{ width: '100%' }}>
+                <Form.Item name="chatgpt_manual_handoff_timeout_seconds" label="人工接管等待秒数" style={{ flex: 1 }}>
+                  <Input placeholder="900" />
+                </Form.Item>
+                <Form.Item name="chatgpt_manual_email_poll_interval_seconds" label="邮箱验证码提示间隔" style={{ flex: 1 }}>
+                  <Input placeholder="10" />
+                </Form.Item>
+              </Space>
+              <Form.Item
+                name="chatgpt_manual_browser_profile_dir"
+                label="本地 Chromium Profile 目录（兜底）"
+                extra="仅浏览器后端选择本地隔离 Chromium 时使用；留空则使用项目下 .manual_profiles/chatgpt。"
+              >
+                <Input placeholder="/path/to/profile" />
+              </Form.Item>
+              <Form.Item name="chatgpt_manual_browser_keep_open" label="任务结束后保留浏览器" valuePropName="checked">
+                <Checkbox>保留窗口，便于继续查看现场</Checkbox>
+              </Form.Item>
+            </Card>
+          )}
 
         <Card title="邮箱配置" style={{ marginBottom: 16 }}>
           <Form.Item name="mail_provider" label="邮箱服务" rules={[{ required: true }]}>

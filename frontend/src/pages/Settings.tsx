@@ -54,6 +54,10 @@ const SELECT_FIELDS: Record<string, { label: string; value: string }[]> = {
     { label: 'AT（Access Token，推荐）', value: 'at' },
     { label: 'RT（Refresh Token）', value: 'rt' },
   ],
+  chatgpt_manual_browser_provider: [
+    { label: 'AdsPower / SunBrowser', value: 'adspower' },
+    { label: '本地隔离 Chromium', value: 'playwright' },
+  ],
 }
 
 const TAB_ITEMS = [
@@ -216,7 +220,7 @@ const TAB_ITEMS = [
     sections: [
       {
         title: '验证码服务',
-        desc: '用于绕过注册页面的人机验证',
+        desc: '用于处理注册页面的人机验证',
         fields: [
           { key: 'default_captcha_solver', label: '默认服务', type: 'select' },
           { key: 'yescaptcha_key', label: 'YesCaptcha Key', secret: true },
@@ -284,6 +288,21 @@ const TAB_ITEMS = [
           { key: 'smstome_otp_timeout_seconds', label: '短信等待秒数', placeholder: '45' },
           { key: 'smstome_poll_interval_seconds', label: '轮询间隔秒数', placeholder: '5' },
           { key: 'smstome_sync_max_pages_per_country', label: '每国同步页数', placeholder: '5' },
+        ],
+      },
+      {
+        title: '浏览器人工接管',
+        desc: 'ChatGPT browser_manual_handoff 模式使用；AdsPower 需先启动 Local API 并配置 profile',
+        fields: [
+          { key: 'chatgpt_manual_browser_provider', label: '浏览器后端', type: 'select' },
+          { key: 'chatgpt_adspower_api_url', label: 'AdsPower Local API', placeholder: 'http://local.adspower.net:50325' },
+          { key: 'chatgpt_adspower_profile_id', label: 'AdsPower Profile ID', placeholder: 'user_id / profile_id' },
+          { key: 'chatgpt_adspower_serial_number', label: 'AdsPower Serial Number', placeholder: '未填 Profile ID 时使用' },
+          { key: 'chatgpt_adspower_api_key', label: 'AdsPower API Key', secret: true, placeholder: '启用安全校验时填写' },
+          { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
+          { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
+          { key: 'chatgpt_manual_browser_profile_dir', label: '本地 Chromium Profile 目录', placeholder: '.manual_profiles/chatgpt' },
+          { key: 'chatgpt_manual_browser_keep_open', label: '任务结束保留浏览器', type: 'boolean' },
         ],
       },
     ],
@@ -1158,9 +1177,22 @@ export default function Settings() {
       if (!data.gmail_imap_mailbox) {
         data.gmail_imap_mailbox = 'INBOX'
       }
+      if (!data.chatgpt_manual_browser_provider) {
+        data.chatgpt_manual_browser_provider = 'adspower'
+      }
+      if (!data.chatgpt_adspower_api_url) {
+        data.chatgpt_adspower_api_url = 'http://local.adspower.net:50325'
+      }
+      if (!data.chatgpt_manual_handoff_timeout_seconds) {
+        data.chatgpt_manual_handoff_timeout_seconds = '900'
+      }
+      if (!data.chatgpt_manual_email_poll_interval_seconds) {
+        data.chatgpt_manual_email_poll_interval_seconds = '10'
+      }
       data.cfworker_domains = parseStoredDomainList(data.cfworker_domains)
       data.cfworker_enabled_domains = parseStoredDomainList(data.cfworker_enabled_domains)
       data.cfworker_random_subdomain = parseBooleanConfigValue(data.cfworker_random_subdomain)
+      data.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(data.chatgpt_manual_browser_keep_open)
       form.setFieldsValue(data)
     })
   }, [form])
@@ -1184,6 +1216,7 @@ export default function Settings() {
         values.cfworker_domain = ''
       }
       values.cfworker_random_subdomain = parseBooleanConfigValue(values.cfworker_random_subdomain)
+      values.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(values.chatgpt_manual_browser_keep_open)
 
       await apiFetch('/config', { method: 'PUT', body: JSON.stringify({ data: values }) })
       form.setFieldsValue({
@@ -1191,6 +1224,7 @@ export default function Settings() {
         cfworker_enabled_domains: enabledDomains,
         cfworker_domain: domains.length > 0 ? '' : values.cfworker_domain,
         cfworker_random_subdomain: values.cfworker_random_subdomain,
+        chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       })
       message.success('保存成功')
       setSaved(true)

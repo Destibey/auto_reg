@@ -3,6 +3,7 @@ from unittest import mock
 
 from platforms.chatgpt.chatgpt_registration_mode_adapter import (
     CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY,
+    CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
     CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN,
     ChatGPTRegistrationContext,
     build_chatgpt_registration_mode_adapter,
@@ -23,6 +24,14 @@ class ChatGPTRegistrationModeAdapterTests(unittest.TestCase):
                 {"chatgpt_has_refresh_token_solution": False}
             ),
             CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY,
+        )
+
+    def test_resolve_supports_browser_manual_handoff_mode(self):
+        self.assertEqual(
+            resolve_chatgpt_registration_mode(
+                {"chatgpt_registration_mode": "browser_manual_handoff"}
+            ),
+            CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
         )
 
     def test_build_account_marks_selected_mode(self):
@@ -93,6 +102,45 @@ class ChatGPTRegistrationModeAdapterTests(unittest.TestCase):
         self.assertEqual(created["password"], "pw-demo")
         self.assertEqual(created["kwargs"]["browser_mode"], "headed")
         self.assertEqual(created["kwargs"]["max_retries"], 5)
+
+    def test_browser_manual_handoff_adapter_passes_runtime_context_to_engine(self):
+        created = {}
+
+        class FakeEngine:
+            def __init__(self, **kwargs):
+                created["kwargs"] = kwargs
+                self.email = None
+                self.password = None
+
+            def run(self):
+                created["email"] = self.email
+                created["password"] = self.password
+                return type("Result", (), {"success": True})()
+
+        adapter = build_chatgpt_registration_mode_adapter(
+            {"chatgpt_registration_mode": "browser_manual_handoff"}
+        )
+        context = ChatGPTRegistrationContext(
+            email_service=object(),
+            proxy_url="http://127.0.0.1:7890",
+            callback_logger=lambda _msg: None,
+            email="demo@example.com",
+            password="pw-demo",
+            browser_mode="headed",
+            max_retries=5,
+            extra_config={"chatgpt_manual_handoff_timeout_seconds": 300},
+        )
+
+        with mock.patch(
+            "platforms.chatgpt.browser_manual_handoff_registration_engine.BrowserManualHandoffRegistrationEngine",
+            FakeEngine,
+        ):
+            adapter.run(context)
+
+        self.assertEqual(created["email"], "demo@example.com")
+        self.assertEqual(created["password"], "pw-demo")
+        self.assertEqual(created["kwargs"]["proxy_url"], "http://127.0.0.1:7890")
+        self.assertEqual(created["kwargs"]["extra_config"]["chatgpt_manual_handoff_timeout_seconds"], 300)
 
 
 if __name__ == "__main__":

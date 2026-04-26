@@ -10,11 +10,20 @@ from core.base_platform import Account, AccountStatus
 
 CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN = "refresh_token"
 CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY = "access_token_only"
+CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF = "browser_manual_handoff"
 DEFAULT_CHATGPT_REGISTRATION_MODE = CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN
 
 
 def normalize_chatgpt_registration_mode(value) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
+    if normalized in {
+        CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
+        "browser_manual",
+        "manual_handoff",
+        "browser_handoff",
+        "manual_browser",
+    }:
+        return CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
     if normalized in {
         CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY,
         "access_token",
@@ -133,10 +142,30 @@ class AccessTokenOnlyChatGPTRegistrationAdapter(BaseChatGPTRegistrationModeAdapt
         )
 
 
+class BrowserManualHandoffChatGPTRegistrationAdapter(BaseChatGPTRegistrationModeAdapter):
+    mode = CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+
+    def _create_engine(self, context: ChatGPTRegistrationContext):
+        from platforms.chatgpt.browser_manual_handoff_registration_engine import (
+            BrowserManualHandoffRegistrationEngine,
+        )
+
+        return BrowserManualHandoffRegistrationEngine(
+            email_service=context.email_service,
+            proxy_url=context.proxy_url,
+            browser_mode=context.browser_mode,
+            callback_logger=context.callback_logger,
+            max_retries=context.max_retries,
+            extra_config=context.extra_config,
+        )
+
+
 def build_chatgpt_registration_mode_adapter(
     extra: Optional[dict],
 ) -> BaseChatGPTRegistrationModeAdapter:
     mode = resolve_chatgpt_registration_mode(extra)
+    if mode == CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF:
+        return BrowserManualHandoffChatGPTRegistrationAdapter()
     if mode == CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY:
         return AccessTokenOnlyChatGPTRegistrationAdapter()
     return RefreshTokenChatGPTRegistrationAdapter()

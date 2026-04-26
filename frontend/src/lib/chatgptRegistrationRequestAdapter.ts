@@ -1,5 +1,6 @@
 import {
   CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY,
+  CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,
   CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN,
   type ChatGPTRegistrationMode,
 } from '@/lib/chatgptRegistrationMode'
@@ -39,11 +40,29 @@ class AccessTokenOnlyChatGPTRegistrationRequestAdapter
   }
 }
 
+class BrowserManualHandoffChatGPTRegistrationRequestAdapter
+  implements ChatGPTRegistrationRequestAdapter
+{
+  readonly mode = CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
+
+  extendExtra(extra: RegistrationExtra): RegistrationExtra {
+    return {
+      ...extra,
+      chatgpt_registration_mode: this.mode,
+      chatgpt_has_refresh_token_solution: true,
+    }
+  }
+}
+
 export function buildChatGPTRegistrationRequestAdapter(
   platform: string | undefined,
   mode: ChatGPTRegistrationMode,
 ): ChatGPTRegistrationRequestAdapter | null {
   if (platform !== 'chatgpt') return null
+
+  if (mode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF) {
+    return new BrowserManualHandoffChatGPTRegistrationRequestAdapter()
+  }
 
   if (mode === CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY) {
     return new AccessTokenOnlyChatGPTRegistrationRequestAdapter()

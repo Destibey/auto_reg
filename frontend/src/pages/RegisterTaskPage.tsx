@@ -317,7 +317,7 @@ export default function RegisterTaskPage() {
                 showIcon
                 style={{ marginBottom: 16 }}
                 message="Camoufox 浏览器模式不使用执行器选择"
-                description="该模式固定启动 Camoufox 打开 ChatGPT 直接注册页；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
+                description="该模式固定启动 Camoufox 打开普通 ChatGPT 页面；protocol/headless/headed 不会改变 Camoufox 的启动方式。"
               />
             </>
           ) : (
@@ -388,7 +388,7 @@ export default function RegisterTaskPage() {
                   chatgptRegistrationMode ===
                   CHATGPT_REGISTRATION_MODE_CAMOUFOX_ASSISTED_SIGNUP
                     ? '系统会在 Camoufox 中自动填写邮箱、密码、验证码、姓名和年龄；遇到手机号直接失败，遇到确认勾选或人工验证会等待你接管。注册任务只保存邮箱和密码，不会取 token。'
-                    : '系统只打开 Camoufox ChatGPT 直接注册页；验证码、Cloudflare、手机号页都需要你本人处理。注册任务只保存邮箱和密码，不会打开 OAuth 授权页，也不会取 token。'
+                    : '系统只打开 Camoufox 普通 ChatGPT 页面；验证码、Cloudflare、手机号页都需要你本人处理。注册任务只保存邮箱和密码，不会打开 OAuth 授权页，也不会取 token。'
                 }
               />
             )}

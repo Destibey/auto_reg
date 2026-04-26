@@ -24,7 +24,7 @@ from .oauth import OAuthManager, OAuthStart
 from .refresh_token_registration_engine import RegistrationResult
 from .utils import generate_random_name, generate_random_password
 
-DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://auth.openai.com/create-account"
+DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://chatgpt.com/"
 
 
 @dataclass
@@ -935,6 +935,7 @@ class BrowserManualHandoffRegistrationEngine:
             "filled_code": "自动辅助已填写邮箱验证码。",
             "filled_name": "自动辅助已填写姓名。",
             "filled_age": "自动辅助已填写年龄。",
+            "clicked_signup_entry": "自动辅助已点击普通 ChatGPT 页面的注册入口。",
             "clicked_continue": "自动辅助已点击继续/下一步。",
         }
         for action, message in action_messages.items():
@@ -1075,6 +1076,31 @@ class BrowserManualHandoffRegistrationEngine:
   const bodyText = lower(document.body ? document.body.innerText : '');
   if (/(captcha|hcaptcha|recaptcha|turnstile|are you human|verify you are human)/.test(bodyText)) {
     result.challengeDetected = true;
+  }
+  const hasCredentialField = controls.some(element => {
+    const text = attrText(element);
+    const type = lower(element.getAttribute('type'));
+    return type === 'email' || type === 'password' || /(email|identifier|username|password|code|otp)/.test(text);
+  });
+  if (!hasCredentialField && !result.challengeDetected) {
+    const entry = collect('a, button, [role="button"], input[type="button"], input[type="submit"]').find(element => {
+      if (!visible(element)) return false;
+      const text = lower([
+        element.innerText,
+        element.textContent,
+        element.getAttribute('value'),
+        element.getAttribute('aria-label'),
+        element.getAttribute('title'),
+        element.getAttribute('href'),
+      ].filter(Boolean).join(' '));
+      if (/(log in|login|sign in|se connecter|ouvrir une session|登录|登入)/.test(text)) return false;
+      return /(sign up|signup|create account|get started|register|s'inscrire|s’inscrire|inscription|créer un compte|creer un compte|注册|创建账号)/.test(text);
+    });
+    if (entry) {
+      entry.click();
+      result.actions.push('clicked_signup_entry');
+      return result;
+    }
   }
   fillFirst('filled_email', payload.email, (element, text) => {
     const type = lower(element.getAttribute('type'));
@@ -1339,7 +1365,7 @@ class BrowserManualHandoffRegistrationEngine:
             self._log(f"已打开隔离浏览器 provider={session.provider}")
             self._install_clipboard_paste_watcher(session)
             signup_url = self._manual_signup_url()
-            self._log(f"打开 ChatGPT 直接注册入口: {signup_url}")
+            self._log(f"打开普通 ChatGPT 入口: {signup_url}")
             session.page.goto(signup_url, wait_until="domcontentloaded")
 
             if self._assisted_signup_enabled():

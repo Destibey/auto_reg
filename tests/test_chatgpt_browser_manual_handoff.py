@@ -85,7 +85,7 @@ class FakeReadableLocator:
 
 
 class FakeReadablePage(FakePage):
-    url = "https://auth.openai.com/create-account"
+    url = "https://chatgpt.com/"
 
     def is_closed(self):
         return False
@@ -161,10 +161,10 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         session.close()
         self.assertTrue(session.closed)
 
-    def test_default_signup_url_opens_direct_create_account_page(self):
+    def test_default_signup_url_opens_chatgpt_homepage(self):
         self.assertEqual(
             DEFAULT_CHATGPT_MANUAL_SIGNUP_URL,
-            "https://auth.openai.com/create-account",
+            "https://chatgpt.com/",
         )
 
     def test_token_callback_stage_is_ignored_during_registration(self):
@@ -280,6 +280,18 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertEqual(page.payloads[-1]["age"], "28")
         self.assertTrue(any("勾选" in log for log in engine.logs))
 
+    def test_assisted_signup_can_click_signup_entry_before_form_fields(self):
+        page = FakeAssistedPage({"actions": ["clicked_signup_entry"]})
+        session = FakeBrowserSession(page=page)
+        engine = self._make_engine()
+        engine.email = "manual@example.com"
+        engine.password = "pw-demo"
+
+        changed = engine._assist_signup_pages(session)
+
+        self.assertTrue(changed)
+        self.assertTrue(any("注册入口" in log for log in engine.logs))
+
     def test_assisted_wait_attempts_browser_automation_before_success(self):
         session = FakeBrowserSession()
         engine = self._make_engine()
@@ -288,7 +300,7 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             engine,
             "_collect_page_states",
             side_effect=[
-                [ManualPageState(url="https://auth.openai.com/create-account", body_text="Create account")],
+                [ManualPageState(url="https://chatgpt.com/", body_text="Log in Sign up")],
                 [ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
             ],
         ):

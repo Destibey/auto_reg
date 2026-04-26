@@ -294,12 +294,12 @@ const TAB_ITEMS = [
       },
       {
         title: 'Camoufox 浏览器人工接管',
-        desc: 'ChatGPT browser_manual_handoff 模式使用；默认只启动本地 Camoufox 打开普通 ChatGPT 入口，第二段 OAuth/token 动作需显式开启。',
+        desc: 'ChatGPT browser_manual_handoff 模式使用；默认每次启动全新 Camoufox 临时 profile 打开普通 ChatGPT 入口，第二段 OAuth/token 动作需显式开启。',
         fields: [
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
           { key: 'chatgpt_manual_enable_token_callback', label: '注册后继续 OAuth 取 token', type: 'boolean' },
-          { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '留空使用系统默认用户目录' },
+          { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '推荐留空；填写后会复用该 profile' },
           { key: 'chatgpt_camoufox_os', label: 'OS 指纹范围', type: 'select' },
           { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '留空关闭；可填 true 或 1.5' },
           { key: 'chatgpt_camoufox_geoip', label: 'GeoIP 跟随代理', type: 'boolean' },

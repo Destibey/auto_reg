@@ -39,7 +39,7 @@ export default function RegisterTaskPage() {
 
   useEffect(() => {
     apiFetch('/config').then((cfg) => {
-      const currentPlatform = form.getFieldValue('platform') || 'trae'
+      const currentPlatform = form.getFieldValue('platform') || 'chatgpt'
       form.setFieldsValue({
         executor_type: normalizeExecutorForPlatform(currentPlatform, cfg.default_executor),
         captcha_solver: cfg.default_captcha_solver || 'yescaptcha',
@@ -276,7 +276,7 @@ export default function RegisterTaskPage() {
       </div>
 
       <Form form={form} layout="vertical" onFinish={submit} initialValues={{
-        platform: 'trae',
+        platform: 'chatgpt',
         executor_type: 'protocol',
         captcha_solver: 'yescaptcha',
         mail_provider: 'luckmail',
@@ -400,7 +400,7 @@ export default function RegisterTaskPage() {
                 showIcon
                 style={{ marginBottom: 16 }}
                 message="浏览器后端：Camoufox（免费本地）"
-                description="如果留空 Profile 目录，后端会使用系统用户目录下的 AutoReg/manual_profiles/chatgpt_camoufox，不再写入项目目录。"
+                description="如果留空 Profile 目录，后端会为每次注册创建全新的临时 profile，并在任务结束后清理，避免复用上一个账号的登录态。"
               />
               <Space style={{ width: '100%' }}>
                 <Form.Item name="chatgpt_manual_handoff_timeout_seconds" label="人工接管等待秒数" style={{ flex: 1 }}>
@@ -413,7 +413,7 @@ export default function RegisterTaskPage() {
               <Form.Item
                 name="chatgpt_manual_browser_profile_dir"
                 label="Camoufox Profile 目录"
-                extra="可留空，推荐使用后端默认的系统用户目录；只有需要固定/迁移 profile 时再填写绝对路径。"
+                extra="推荐留空。填写绝对路径会复用该 profile，可能带入上一个账号登录态；只有确实需要固定/迁移 profile 时再填写。"
               >
                 <Input placeholder="/path/to/profile" />
               </Form.Item>

@@ -22,10 +22,22 @@ class FakePage:
     def __init__(self):
         self.goto_url = ""
         self.goto_urls = []
+        self.exposed = {}
+        self.init_scripts = []
+        self.evaluated_scripts = []
 
     def goto(self, url, **_kwargs):
         self.goto_url = url
         self.goto_urls.append(url)
+
+    def expose_function(self, name, callback):
+        self.exposed[name] = callback
+
+    def add_init_script(self, script):
+        self.init_scripts.append(script)
+
+    def evaluate(self, script):
+        self.evaluated_scripts.append(script)
 
 
 class FakeBrowserSession:
@@ -56,7 +68,10 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         engine = BrowserManualHandoffRegistrationEngine(
             email_service=FakeEmailService(),
             callback_logger=lambda _msg: None,
-            extra_config={"chatgpt_manual_handoff_timeout_seconds": 5},
+            extra_config={
+                "chatgpt_manual_handoff_timeout_seconds": 5,
+                "chatgpt_manual_clipboard_sequence": False,
+            },
         )
         engine.password = "pw-demo"
         return engine
@@ -69,7 +84,10 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             with mock.patch.object(
                 engine,
                 "_collect_page_states",
-                return_value=[ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
+                side_effect=[
+                    [ManualPageState(url="https://chatgpt.com/", body_text="Log in Sign up")],
+                    [ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
+                ],
             ):
                 result = engine.run()
 
@@ -92,6 +110,7 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             extra_config={
                 "chatgpt_manual_handoff_timeout_seconds": 5,
                 "chatgpt_manual_enable_token_callback": True,
+                "chatgpt_manual_clipboard_sequence": False,
             },
         )
         engine.password = "pw-demo"
@@ -166,6 +185,26 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         self.assertNotIn("humanize", launch_kwargs)
         self.assertNotIn("os", launch_kwargs)
 
+    def test_default_manual_profile_dir_is_unique_and_marked_for_cleanup(self):
+        engine = self._make_engine()
+
+        first_dir, first_cleanup = engine._manual_profile_dir("chatgpt_camoufox")
+        second_dir, second_cleanup = engine._manual_profile_dir("chatgpt_camoufox")
+
+        self.assertNotEqual(first_dir, second_dir)
+        self.assertTrue(first_cleanup)
+        self.assertTrue(second_cleanup)
+        self.assertIn("run-", first_dir)
+
+    def test_configured_manual_profile_dir_is_reused_without_cleanup(self):
+        engine = self._make_engine()
+        engine.extra_config["chatgpt_manual_browser_profile_dir"] = "/tmp/fixed-autoreg-profile"
+
+        profile_dir, cleanup = engine._manual_profile_dir("chatgpt_camoufox")
+
+        self.assertEqual(profile_dir, "/tmp/fixed-autoreg-profile")
+        self.assertFalse(cleanup)
+
     def test_camoufox_launch_accepts_normal_runtime_options(self):
         engine = BrowserManualHandoffRegistrationEngine(
             email_service=FakeEmailService(),
@@ -216,13 +255,59 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         with mock.patch.object(
             engine,
             "_collect_page_states",
-            return_value=[ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
+            side_effect=[
+                [ManualPageState(url="https://chatgpt.com/", body_text="Log in Sign up")],
+                [ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
+            ],
         ):
             ok, payload = engine._wait_for_manual_completion(session)
 
         self.assertTrue(ok)
         self.assertIn("signup-only", payload)
         self.assertEqual(session.page.goto_url, "")
+
+    def test_existing_logged_in_chatgpt_app_does_not_complete_immediately(self):
+        session = FakeBrowserSession()
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={
+                "chatgpt_manual_handoff_timeout_seconds": 1,
+                "chatgpt_manual_clipboard_sequence": False,
+            },
+        )
+
+        with mock.patch.object(
+            engine,
+            "_collect_page_states",
+            return_value=[ManualPageState(url="https://chatgpt.com/", body_text="New chat Message ChatGPT")],
+        ):
+            ok, payload = engine._wait_for_manual_completion(session)
+
+        self.assertFalse(ok)
+        self.assertIn("超时", payload)
+
+    def test_manual_clipboard_advances_from_email_to_password_after_paste(self):
+        engine = self._make_engine()
+        engine.extra_config["chatgpt_manual_clipboard_sequence"] = True
+        copied = []
+
+        with mock.patch.object(engine, "_set_system_clipboard", side_effect=lambda value: copied.append(value) or True):
+            engine._prepare_manual_clipboard("manual@example.com", "pw-demo")
+            engine._handle_page_paste("manual@example.com")
+
+        self.assertEqual(copied, ["manual@example.com", "pw-demo"])
+
+    def test_installs_clipboard_paste_watcher_on_manual_page(self):
+        session = FakeBrowserSession()
+        engine = self._make_engine()
+        engine.extra_config["chatgpt_manual_clipboard_sequence"] = True
+
+        engine._install_clipboard_paste_watcher(session)
+
+        self.assertIn("__autoregClipboardPasted", session.page.exposed)
+        self.assertTrue(session.page.init_scripts)
+        self.assertTrue(session.page.evaluated_scripts)
 
     def test_logged_out_chatgpt_home_does_not_open_oauth(self):
         engine = self._make_engine()

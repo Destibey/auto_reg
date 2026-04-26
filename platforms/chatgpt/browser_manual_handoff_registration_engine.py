@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import sys
+import threading
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +38,8 @@ class ManualBrowserSession:
     adspower_profile_value: str = ""
     adspower_headers: Optional[dict] = None
     keep_open: bool = False
+    profile_dir: str = ""
+    cleanup_profile_on_close: bool = False
 
     def close(self) -> None:
         if self.keep_open:
@@ -62,6 +69,11 @@ class ManualBrowserSession:
                 self.playwright.stop()
         except Exception:
             pass
+        if self.cleanup_profile_on_close and self.profile_dir:
+            try:
+                shutil.rmtree(self.profile_dir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 @dataclass
@@ -103,6 +115,11 @@ class BrowserManualHandoffRegistrationEngine:
         self.logs: list[str] = []
         self._used_verification_codes: set[str] = set()
         self._last_otp_poll = 0.0
+        self._clipboard_lock = threading.Lock()
+        self._clipboard_sequence: list[tuple[str, str]] = []
+        self._clipboard_index = 0
+        self._last_clipboard_value = ""
+        self._saw_manual_credential_paste = False
 
     def _log(self, message: str, level: str = "info") -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -171,6 +188,138 @@ class BrowserManualHandoffRegistrationEngine:
         else:
             base_dir = Path.home() / ".cache" / "autoreg" / "manual_profiles"
         return str(base_dir / name)
+
+    def _manual_profile_dir(self, name: str) -> tuple[str, bool]:
+        configured = str(self.extra_config.get("chatgpt_manual_browser_profile_dir") or "").strip()
+        if configured:
+            return configured, False
+        root = Path(self._default_manual_profile_dir(name))
+        profile_dir = root / f"run-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
+        return str(profile_dir), True
+
+    def _manual_clipboard_enabled(self) -> bool:
+        return self._bool_config("chatgpt_manual_clipboard_sequence", True)
+
+    def _set_system_clipboard(self, value: str) -> bool:
+        if not value:
+            return False
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(["pbcopy"], input=value, text=True, check=True, timeout=3)
+                return True
+            if os.name == "nt":
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", "Set-Clipboard -Value $input"],
+                    input=value,
+                    text=True,
+                    check=True,
+                    timeout=3,
+                )
+                return True
+            wl_copy = shutil.which("wl-copy")
+            if wl_copy:
+                subprocess.run([wl_copy], input=value, text=True, check=True, timeout=3)
+                return True
+            xclip = shutil.which("xclip")
+            if xclip:
+                subprocess.run(
+                    [xclip, "-selection", "clipboard"],
+                    input=value,
+                    text=True,
+                    check=True,
+                    timeout=3,
+                )
+                return True
+            xsel = shutil.which("xsel")
+            if xsel:
+                subprocess.run(
+                    [xsel, "--clipboard", "--input"],
+                    input=value,
+                    text=True,
+                    check=True,
+                    timeout=3,
+                )
+                return True
+        except Exception:
+            return False
+        return False
+
+    def _prepare_manual_clipboard(self, email: str, password: str) -> None:
+        if not self._manual_clipboard_enabled():
+            return
+        with self._clipboard_lock:
+            self._clipboard_sequence = [("邮箱", email), ("密码", password)]
+            self._clipboard_index = 0
+            self._last_clipboard_value = ""
+            self._saw_manual_credential_paste = False
+        self._copy_next_clipboard_item()
+
+    def _copy_next_clipboard_item(self) -> None:
+        with self._clipboard_lock:
+            if self._clipboard_index >= len(self._clipboard_sequence):
+                return
+            label, value = self._clipboard_sequence[self._clipboard_index]
+            next_index = self._clipboard_index + 1
+        if not self._set_system_clipboard(value):
+            self._log(f"{label} 未能自动写入系统剪贴板，请从任务日志手动复制。", "warning")
+            return
+        with self._clipboard_lock:
+            self._clipboard_index = next_index
+            self._last_clipboard_value = value
+        if label == "邮箱":
+            self._log("邮箱已复制到系统剪贴板；在浏览器中粘贴邮箱后，将自动把密码放入剪贴板。")
+        else:
+            self._log("密码已复制到系统剪贴板；请继续在浏览器中粘贴密码。")
+
+    def _handle_page_paste(self, pasted_text: str = "") -> None:
+        pasted = str(pasted_text or "").strip()
+        with self._clipboard_lock:
+            expected = self._last_clipboard_value.strip()
+            has_next = self._clipboard_index < len(self._clipboard_sequence)
+        if expected and pasted and pasted != expected:
+            return
+        if expected:
+            self._saw_manual_credential_paste = True
+        if has_next:
+            self._copy_next_clipboard_item()
+
+    def _install_clipboard_paste_watcher(self, session: ManualBrowserSession) -> None:
+        if not self._manual_clipboard_enabled():
+            return
+        page = getattr(session, "page", None)
+        if page is None:
+            return
+
+        def on_paste(text=""):
+            self._handle_page_paste(str(text or ""))
+
+        try:
+            page.expose_function("__autoregClipboardPasted", on_paste)
+        except Exception:
+            pass
+        script = """
+(() => {
+  const install = () => {
+    if (window.__autoregClipboardWatcherInstalled) return;
+    window.__autoregClipboardWatcherInstalled = true;
+    document.addEventListener('paste', event => {
+      const text = event.clipboardData ? event.clipboardData.getData('text') : '';
+      if (window.__autoregClipboardPasted) {
+        Promise.resolve(window.__autoregClipboardPasted(text)).catch(() => {});
+      }
+    }, true);
+  };
+  install();
+})();
+"""
+        try:
+            page.add_init_script(script)
+        except Exception:
+            pass
+        try:
+            page.evaluate(script)
+        except Exception:
+            pass
 
     def _create_email(self) -> str:
         if self.email:
@@ -262,10 +411,7 @@ class BrowserManualHandoffRegistrationEngine:
     def _open_playwright_session(self) -> ManualBrowserSession:
         from playwright.sync_api import sync_playwright
 
-        profile_dir = str(
-            self.extra_config.get("chatgpt_manual_browser_profile_dir")
-            or self._default_manual_profile_dir("chatgpt")
-        )
+        profile_dir, cleanup_profile = self._manual_profile_dir("chatgpt")
         Path(profile_dir).mkdir(parents=True, exist_ok=True)
         playwright = sync_playwright().start()
         launch_kwargs = {
@@ -282,18 +428,17 @@ class BrowserManualHandoffRegistrationEngine:
             context=context,
             playwright=playwright,
             keep_open=self._bool_config("chatgpt_manual_browser_keep_open", False),
+            profile_dir=profile_dir,
+            cleanup_profile_on_close=cleanup_profile,
         )
 
     def _open_camoufox_session(self) -> ManualBrowserSession:
         from camoufox.sync_api import Camoufox
 
-        profile_dir = str(
-            self.extra_config.get("chatgpt_manual_browser_profile_dir")
-            or self._default_manual_profile_dir("chatgpt_camoufox")
-        )
+        profile_dir, cleanup_profile = self._manual_profile_dir("chatgpt_camoufox")
         Path(profile_dir).mkdir(parents=True, exist_ok=True)
         launch_kwargs = self._build_camoufox_launch_kwargs(profile_dir)
-        self._log("启动本地 Camoufox 隔离浏览器...")
+        self._log("启动本地 Camoufox 隔离浏览器（本次任务使用全新 profile）...")
         camoufox = Camoufox(**launch_kwargs)
         context = camoufox.__enter__()
         page = context.new_page()
@@ -303,6 +448,8 @@ class BrowserManualHandoffRegistrationEngine:
             context=context,
             playwright=camoufox,
             keep_open=self._bool_config("chatgpt_manual_browser_keep_open", False),
+            profile_dir=profile_dir,
+            cleanup_profile_on_close=cleanup_profile,
         )
 
     def _build_camoufox_launch_kwargs(self, profile_dir: str) -> dict:
@@ -469,6 +616,39 @@ class BrowserManualHandoffRegistrationEngine:
                 return True
         return False
 
+    @staticmethod
+    def _looks_like_signup_flow(states: list[ManualPageState]) -> bool:
+        url_markers = (
+            "/auth",
+            "auth.openai.com",
+            "auth0.openai.com",
+            "login.openai.com",
+        )
+        text_markers = (
+            "log in",
+            "sign up",
+            "sign in",
+            "create account",
+            "continue with email",
+            "verify your email",
+            "enter code",
+            "verification code",
+            "password",
+            "登录",
+            "注册",
+            "创建账号",
+            "验证码",
+            "密码",
+        )
+        for state in states:
+            lowered_url = (state.url or "").lower()
+            if any(marker in lowered_url for marker in url_markers):
+                return True
+            text = " ".join((state.title, state.body_text)).lower()
+            if any(marker in text for marker in text_markers):
+                return True
+        return False
+
     def _poll_email_code_for_user(self) -> None:
         if not hasattr(self.email_service, "get_verification_code"):
             return
@@ -506,6 +686,8 @@ class BrowserManualHandoffRegistrationEngine:
         timeout = self._int_config("chatgpt_manual_handoff_timeout_seconds", 900)
         self._log(f"等待你在普通 ChatGPT 页面手动完成注册，最多 {timeout}s ...")
         deadline = time.time() + timeout
+        seen_signup_flow = False
+        warned_existing_session = False
         while time.time() < deadline:
             self._checkpoint()
             states = self._collect_page_states(session)
@@ -513,8 +695,14 @@ class BrowserManualHandoffRegistrationEngine:
                 return False, "人工接管浏览器已关闭或不可访问，注册流程已停止。"
             if self._requires_phone(states):
                 return False, "OpenAI 要求绑定手机号；人工接管模式已按策略停止。"
+            if self._looks_like_signup_flow(states) or self._saw_manual_credential_paste:
+                seen_signup_flow = True
             if self._looks_like_chatgpt_app(states):
-                return True, "检测到普通 ChatGPT 注册/登录已进入应用。已按 signup-only 策略停止，不自动进入 OAuth 取 token。"
+                if seen_signup_flow:
+                    return True, "检测到普通 ChatGPT 注册/登录已进入应用。已按 signup-only 策略停止，不自动进入 OAuth 取 token。"
+                if not warned_existing_session:
+                    self._log("检测到已有 ChatGPT 登录态，暂不判定为本次注册成功；请先退出旧账号后继续注册。", "warning")
+                    warned_existing_session = True
             self._poll_email_code_for_user()
             time.sleep(1)
         return False, "等待人工完成注册超时"
@@ -556,9 +744,11 @@ class BrowserManualHandoffRegistrationEngine:
             result.password = password
             self._log(f"人工接管邮箱: {email}")
             self._log(f"人工接管密码: {password}")
+            self._prepare_manual_clipboard(email, password)
 
             session = self._open_browser_session()
             self._log(f"已打开隔离浏览器 provider={session.provider}")
+            self._install_clipboard_paste_watcher(session)
             signup_url = self._manual_signup_url()
             self._log(f"打开普通 ChatGPT 注册入口: {signup_url}")
             session.page.goto(signup_url, wait_until="domcontentloaded")

@@ -22,12 +22,12 @@ export function ChatGPTRegistrationModeSwitch({
     [CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN]: {
       tag: '默认推荐',
       color: 'success',
-      desc: '有 RT 方案会走协议请求 + Sentinel Browser，产出 Access Token + Refresh Token。',
+      desc: '协议注册链路会走协议请求 + Sentinel Browser，只完成注册并保存邮箱/密码；Token 请在账号管理页手动取Token。',
     },
     [CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY]: {
       tag: '兼容旧方案',
       color: 'default',
-      desc: '无 RT 方案会走旧协议链路，只产出 Access Token / Session，依赖 RT 的能力可能不可用。',
+      desc: '旧协议链路同样只完成注册并保存邮箱/密码，不在注册任务内读取 Session 或 Access Token。',
     },
     [CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF]: {
       tag: '人工接管',
@@ -43,8 +43,8 @@ export function ChatGPTRegistrationModeSwitch({
           value={mode}
           onChange={(value) => onChange(value as ChatGPTRegistrationMode)}
           options={[
-            { label: '有 RT', value: CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN },
-            { label: '无 RT', value: CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY },
+            { label: '协议注册', value: CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN },
+            { label: '旧协议注册', value: CHATGPT_REGISTRATION_MODE_ACCESS_TOKEN_ONLY },
             {
               label: '浏览器接管',
               value: CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF,

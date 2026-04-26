@@ -64,6 +64,36 @@ class ChatGPTRegistrationModeAdapterTests(unittest.TestCase):
         )
         self.assertFalse(account.extra["chatgpt_has_refresh_token_solution"])
 
+    def test_build_account_marks_refresh_token_mode_signup_only_without_rt_solution(self):
+        adapter = build_chatgpt_registration_mode_adapter(
+            {"chatgpt_registration_mode": "refresh_token"}
+        )
+        result = type(
+            "Result",
+            (),
+            {
+                "email": "demo@example.com",
+                "password": "pw",
+                "account_id": "",
+                "access_token": "",
+                "refresh_token": "",
+                "id_token": "",
+                "session_token": "",
+                "workspace_id": "",
+                "source": "register",
+                "metadata": {"registration_stage": "signup_only"},
+            },
+        )()
+
+        account = adapter.build_account(result, fallback_password="fallback")
+
+        self.assertEqual(
+            account.extra["chatgpt_registration_mode"],
+            CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN,
+        )
+        self.assertEqual(account.extra["registration_stage"], "signup_only")
+        self.assertFalse(account.extra["chatgpt_has_refresh_token_solution"])
+
     def test_build_account_preserves_engine_metadata(self):
         adapter = build_chatgpt_registration_mode_adapter(
             {"chatgpt_registration_mode": "browser_manual_handoff"}

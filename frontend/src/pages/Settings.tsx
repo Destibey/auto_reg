@@ -237,7 +237,7 @@ const TAB_ITEMS = [
     sections: [
       {
         title: 'CPA 面板',
-        desc: '注册完成后自动上传到 CPA 管理平台',
+        desc: '账号管理页取 Token 后用于手动/批量上传到 CPA 管理平台',
         fields: [
           { key: 'cpa_api_url', label: 'API URL', placeholder: 'https://your-cpa.example.com' },
           { key: 'cpa_api_key', label: 'API Key', secret: true },
@@ -245,7 +245,7 @@ const TAB_ITEMS = [
       },
       {
         title: 'Sub2API 面板',
-        desc: '注册完成后自动上传到 Sub2API 管理后台',
+        desc: '账号管理页取 Token 后用于手动/批量上传到 Sub2API 管理后台',
         fields: [
           { key: 'sub2api_api_url', label: 'API URL', placeholder: 'https://your-sub2api.example.com' },
           { key: 'sub2api_api_key', label: 'API Key', secret: true },
@@ -254,7 +254,7 @@ const TAB_ITEMS = [
       },
       {
         title: 'CPA 自动维护',
-        desc: '定时删除 status=error 的凭证，剩余数量低于阈值时自动按现有配置补注册 ChatGPT',
+        desc: '定时删除 status=error 的凭证；补注册只会创建账号并保存邮箱/密码，Token 仍需在账号管理页统一获取',
         fields: [
           { key: 'cpa_cleanup_enabled', label: '自动维护', type: 'select' },
           { key: 'cpa_cleanup_interval_minutes', label: '检查间隔（分钟）', placeholder: '60' },
@@ -273,7 +273,7 @@ const TAB_ITEMS = [
       },
       {
         title: 'CodexProxy',
-        desc: '注册完成后自动上传到 CodexProxy 管理平台',
+        desc: '账号管理页取 Token 后用于手动/批量上传到 CodexProxy 管理平台',
         fields: [
           { key: 'codex_proxy_url', label: 'API URL', placeholder: 'https://your-codex-proxy.example.com' },
           { key: 'codex_proxy_key', label: 'Admin Key', secret: true },
@@ -294,11 +294,10 @@ const TAB_ITEMS = [
       },
       {
         title: 'Camoufox 浏览器人工接管',
-        desc: 'ChatGPT browser_manual_handoff 模式使用；默认每次启动全新 Camoufox 临时 profile 打开 ChatGPT 直接注册页，第二段 OAuth/token 动作需显式开启。',
+        desc: 'ChatGPT browser_manual_handoff 模式使用；默认每次启动全新 Camoufox 临时 profile 打开 ChatGPT 直接注册页。注册任务只保存邮箱/密码，取 Token 请到账号管理页执行。',
         fields: [
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
-          { key: 'chatgpt_manual_enable_token_callback', label: '注册后继续 OAuth 取 token', type: 'boolean' },
           { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '推荐留空；填写后会复用该 profile' },
           { key: 'chatgpt_camoufox_os', label: 'OS 指纹范围', type: 'select' },
           { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '留空关闭；可填 true 或 1.5' },
@@ -1187,7 +1186,7 @@ export default function Settings() {
       if (!data.chatgpt_manual_email_poll_interval_seconds) {
         data.chatgpt_manual_email_poll_interval_seconds = '10'
       }
-      data.chatgpt_manual_enable_token_callback = parseBooleanConfigValue(data.chatgpt_manual_enable_token_callback)
+      data.chatgpt_manual_enable_token_callback = false
       data.cfworker_domains = parseStoredDomainList(data.cfworker_domains)
       data.cfworker_enabled_domains = parseStoredDomainList(data.cfworker_enabled_domains)
       data.cfworker_random_subdomain = parseBooleanConfigValue(data.cfworker_random_subdomain)
@@ -1217,7 +1216,7 @@ export default function Settings() {
       }
       values.cfworker_random_subdomain = parseBooleanConfigValue(values.cfworker_random_subdomain)
       values.chatgpt_manual_browser_provider = 'camoufox'
-      values.chatgpt_manual_enable_token_callback = parseBooleanConfigValue(values.chatgpt_manual_enable_token_callback)
+      values.chatgpt_manual_enable_token_callback = false
       values.chatgpt_camoufox_geoip = parseBooleanConfigValue(values.chatgpt_camoufox_geoip)
       values.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(values.chatgpt_manual_browser_keep_open)
 
@@ -1228,7 +1227,7 @@ export default function Settings() {
         cfworker_domain: domains.length > 0 ? '' : values.cfworker_domain,
         cfworker_random_subdomain: values.cfworker_random_subdomain,
         chatgpt_manual_browser_provider: 'camoufox',
-        chatgpt_manual_enable_token_callback: values.chatgpt_manual_enable_token_callback,
+        chatgpt_manual_enable_token_callback: false,
         chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
         chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       })

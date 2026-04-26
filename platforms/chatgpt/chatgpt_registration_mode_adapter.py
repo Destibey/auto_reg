@@ -101,21 +101,21 @@ class BaseChatGPTRegistrationModeAdapter(ABC):
         )
 
     def _build_account_extra(self, result) -> dict:
+        refresh_token = getattr(result, "refresh_token", "")
         extra = {
             "access_token": getattr(result, "access_token", ""),
-            "refresh_token": getattr(result, "refresh_token", ""),
+            "refresh_token": refresh_token,
             "id_token": getattr(result, "id_token", ""),
             "session_token": getattr(result, "session_token", ""),
             "workspace_id": getattr(result, "workspace_id", ""),
             "chatgpt_registration_mode": self.mode,
-            "chatgpt_has_refresh_token_solution": self.mode == CHATGPT_REGISTRATION_MODE_REFRESH_TOKEN,
+            "chatgpt_has_refresh_token_solution": bool(refresh_token),
             "chatgpt_token_source": getattr(result, "source", "register"),
         }
         metadata = getattr(result, "metadata", {})
         if isinstance(metadata, dict):
             extra.update(metadata)
-        if self.mode == CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF:
-            extra["chatgpt_has_refresh_token_solution"] = bool(extra.get("refresh_token"))
+        extra["chatgpt_has_refresh_token_solution"] = bool(extra.get("refresh_token"))
         return extra
 
 

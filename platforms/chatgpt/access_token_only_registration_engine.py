@@ -1,6 +1,8 @@
 """
-注册流程引擎 V2
-基于 curl_cffi 的注册状态机，注册成功后直接复用同一会话提取 ChatGPT Session。
+注册流程引擎 V2。
+
+注册任务只完成第一阶段：创建账号并保存邮箱/密码。OAuth/token 获取已拆到账号管理页
+的手动取 Token 动作中执行。
 """
 
 import time
@@ -104,7 +106,7 @@ class AccessTokenOnlyRegistrationEngine:
                 try:
                     if attempt == 0:
                         self._log("=" * 60)
-                        self._log("开始注册流程 V2 (Session 复用直取 AccessToken)")
+                        self._log("开始注册流程 V2 (signup-only)")
                         self._log(f"请求模式: {self.browser_mode}")
                         self._log("=" * 60)
                     else:
@@ -141,7 +143,7 @@ class AccessTokenOnlyRegistrationEngine:
                     )
                     chatgpt_client._log = self._log
 
-                    self._log("步骤 1/2: 执行注册状态机...")
+                    self._log("执行注册状态机...")
 
                     success, msg = chatgpt_client.register_complete_flow(
                         email_addr, pwd, first_name, last_name, age, skymail_adapter
@@ -155,41 +157,20 @@ class AccessTokenOnlyRegistrationEngine:
                         result.error_message = last_error
                         return result
 
-                    self._log("步骤 2/2: 复用注册会话，直接获取 ChatGPT Session / AccessToken...")
-                    session_ok, session_result = chatgpt_client.reuse_session_and_get_tokens()
-
-                    if session_ok:
-                        self._log("Token 提取完成！")
-                        result.success = True
-                        result.access_token = session_result.get("access_token", "")
-                        result.session_token = session_result.get("session_token", "")
-                        result.account_id = (
-                            session_result.get("account_id")
-                            or session_result.get("user_id")
-                            or ("v2_acct_" + chatgpt_client.device_id[:8])
-                        )
-                        result.workspace_id = session_result.get("workspace_id", "")
-                        result.metadata = {
-                            "auth_provider": session_result.get("auth_provider", ""),
-                            "expires": session_result.get("expires", ""),
-                            "user_id": session_result.get("user_id", ""),
-                            "user": session_result.get("user") or {},
-                            "account": session_result.get("account") or {},
-                        }
-
-                        if result.workspace_id:
-                            self._log(f"Session Workspace ID: {result.workspace_id}")
-
-                        self._log("=" * 60)
-                        self._log("注册流程成功结束!")
-                        self._log("=" * 60)
-                        return result
-
-                    last_error = f"注册成功，但复用会话获取 AccessToken 失败: {session_result}"
-                    if attempt < self.max_retries - 1:
-                        self._log(f"{last_error}，准备整流程重试")
-                        continue
-                    result.error_message = last_error
+                    result.success = True
+                    result.source = "register"
+                    result.metadata = {
+                        "email_service": getattr(getattr(self.email_service, "service_type", None), "value", ""),
+                        "proxy_used": self.proxy_url,
+                        "registered_at": datetime.now().isoformat(),
+                        "registration_stage": "signup_only",
+                        "token_acquired": False,
+                        "token_acquired_via_relogin": False,
+                    }
+                    self._log("=" * 60)
+                    self._log("注册成功：第一阶段已完成，仅保存邮箱和密码")
+                    self._log("第二阶段 token 获取已从注册任务拆出；请在账号管理页选择已加入 Team 的账号执行“手动取Token”。")
+                    self._log("=" * 60)
                     return result
                 except TaskInterruption:
                     raise
@@ -206,7 +187,7 @@ class AccessTokenOnlyRegistrationEngine:
         except TaskInterruption:
             raise
         except Exception as e:
-            self._log(f"无 RT 注册全流程执行异常: {e}", "error")
+            self._log(f"旧协议 signup-only 注册流程执行异常: {e}", "error")
             import traceback
             traceback.print_exc()
             result.error_message = str(e)

@@ -122,7 +122,7 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
             "https://auth.openai.com/create-account",
         )
 
-    def test_token_callback_stage_runs_only_when_enabled(self):
+    def test_token_callback_stage_is_ignored_during_registration(self):
         session = FakeBrowserSession()
         engine = BrowserManualHandoffRegistrationEngine(
             email_service=FakeEmailService(),
@@ -147,28 +147,18 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
 
         with mock.patch.object(engine, "_open_browser_session", return_value=session):
             with mock.patch.object(engine, "_wait_for_manual_completion", return_value=(True, "signup ok")):
-                with mock.patch.object(
-                    engine,
-                    "_wait_for_token_callback",
-                    return_value=(
-                        True,
-                        {
-                            "email": "manual@example.com",
-                            "account_id": "acct-demo",
-                            "access_token": "at-demo",
-                            "refresh_token": "rt-demo",
-                            "id_token": "id-demo",
-                        },
-                    ),
-                ):
+                with mock.patch.object(engine, "_wait_for_token_callback") as wait_for_token_callback:
                     result = engine.run()
 
         self.assertTrue(result.success)
-        self.assertEqual(session.page.goto_urls, [DEFAULT_CHATGPT_MANUAL_SIGNUP_URL, "https://auth.example/authorize"])
-        self.assertEqual(result.account_id, "acct-demo")
-        self.assertEqual(result.access_token, "at-demo")
-        self.assertEqual(result.refresh_token, "rt-demo")
-        self.assertEqual(result.metadata["manual_handoff_stage"], "token_callback")
+        self.assertEqual(session.page.goto_urls, [DEFAULT_CHATGPT_MANUAL_SIGNUP_URL])
+        self.assertEqual(result.account_id, "")
+        self.assertEqual(result.access_token, "")
+        self.assertEqual(result.refresh_token, "")
+        self.assertEqual(result.metadata["manual_handoff_stage"], "signup_only")
+        self.assertEqual(result.metadata["registration_stage"], "signup_only")
+        engine.oauth_manager.start_oauth.assert_not_called()
+        wait_for_token_callback.assert_not_called()
 
     def test_existing_account_token_acquisition_opens_oauth_directly(self):
         session = FakeBrowserSession()

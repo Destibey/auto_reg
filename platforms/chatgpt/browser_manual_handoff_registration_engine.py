@@ -1002,32 +1002,9 @@ class BrowserManualHandoffRegistrationEngine:
                 return result
 
             if self._manual_token_callback_enabled():
-                self._log("第二段 OAuth/token 动作已启用：开始打开 OAuth 授权入口")
-                oauth_start = self.oauth_manager.start_oauth()
-                self._checkpoint()
-                session.page.goto(oauth_start.auth_url, wait_until="domcontentloaded")
-                ok, payload = self._wait_for_token_callback(session, oauth_start)
-                if not ok:
-                    result.error_message = str(payload)
-                    self._log(result.error_message, "error")
-                    return result
-
-                token_info = payload if isinstance(payload, dict) else {}
-                result.success = True
-                result.email = str(token_info.get("email") or email)
-                result.password = password
-                result.account_id = str(token_info.get("account_id") or "")
-                result.access_token = str(token_info.get("access_token") or "")
-                result.refresh_token = str(token_info.get("refresh_token") or "")
-                result.id_token = str(token_info.get("id_token") or "")
-                result.metadata = {
-                    "expired": token_info.get("expired", ""),
-                    "chatgpt_registration_mode": "browser_manual_handoff",
-                    "manual_handoff_stage": "token_callback",
-                    "chatgpt_manual_enable_token_callback": True,
-                }
-                self._log("browser_manual_handoff token 提取完成")
-                return result
+                self._log(
+                    "注册任务已忽略第二段 OAuth/token 配置；请在账号管理页对已加入 Team 的账号执行“手动取Token”。"
+                )
 
             result.success = True
             result.email = email
@@ -1036,6 +1013,8 @@ class BrowserManualHandoffRegistrationEngine:
                 "chatgpt_registration_mode": "browser_manual_handoff",
                 "manual_handoff_stage": "signup_only",
                 "chatgpt_manual_enable_token_callback": False,
+                "registration_stage": "signup_only",
+                "token_acquired": False,
             }
             self._log(str(payload))
             self._log("browser_manual_handoff 普通注册完成，仅保存邮箱和密码")

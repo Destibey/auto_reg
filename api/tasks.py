@@ -182,18 +182,23 @@ def _get_account_extra(account) -> dict:
     return extra if isinstance(extra, dict) else {}
 
 
-def _is_chatgpt_signup_only_manual_handoff(account) -> bool:
+def _is_chatgpt_signup_only_account(account) -> bool:
     if getattr(account, "platform", "") != "chatgpt":
         return False
     extra = _get_account_extra(account)
-    return extra.get("manual_handoff_stage") == "signup_only"
+    if extra.get("registration_stage") == "signup_only":
+        return True
+    if extra.get("manual_handoff_stage") == "signup_only":
+        return True
+    has_token = bool(extra.get("access_token") or extra.get("refresh_token") or getattr(account, "token", ""))
+    return extra.get("token_acquired") is False and not has_token
 
 
 def _auto_upload_integrations(task_id: str, account):
     """注册成功后自动导入外部系统。"""
     try:
-        if _is_chatgpt_signup_only_manual_handoff(account):
-            _log(task_id, "  [Auto Upload] browser_manual_handoff signup-only 不产生 token，跳过自动上传")
+        if _is_chatgpt_signup_only_account(account):
+            _log(task_id, "  [Auto Upload] ChatGPT signup-only 不产生 token，跳过自动上传；请在账号管理页手动取Token后再统一上传")
             return
 
         from services.external_sync import sync_account

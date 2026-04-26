@@ -231,8 +231,8 @@ class RefreshTokenRegistrationEngine:
         return (
             "注册失败：OpenAI 要求绑定手机号。已停止后续 create_account，"
             "避免继续触发 invalid_auth_step。该状态通常与协议注册链路、"
-            "浏览器/设备指纹、IP 信誉或注册频率有关；当前 refresh-token "
-            "链路不自动处理手机号验证。"
+            "浏览器/设备指纹、IP 信誉或注册频率有关；当前注册任务"
+            "不自动处理手机号验证。"
         )
 
     def _log_response_diagnostics(self, label: str, response) -> None:
@@ -1820,14 +1820,34 @@ class RefreshTokenRegistrationEngine:
             self._log(f"处理 OAuth 回调失败: {e}", "error")
             return None
 
+    def _finish_signup_only_result(self, result: RegistrationResult) -> RegistrationResult:
+        """完成第一阶段注册：只保存邮箱和密码，不在注册任务内获取 token。"""
+        result.success = True
+        result.email = self.email or result.email
+        result.password = self.password or result.password or ""
+        result.source = "register"
+        result.metadata = {
+            "email_service": self.email_service.service_type.value,
+            "proxy_used": self.proxy_url,
+            "registered_at": datetime.now().isoformat(),
+            "is_existing_account": self._is_existing_account,
+            "registration_stage": "signup_only",
+            "token_acquired": False,
+            "token_acquired_via_relogin": False,
+        }
+        self._log("=" * 60)
+        self._log("注册成功：第一阶段已完成，仅保存邮箱和密码")
+        self._log("第二阶段 token 获取已从注册任务拆出；请在账号管理页选择已加入 Team 的账号执行“手动取Token”。")
+        self._log(f"邮箱: {result.email}")
+        self._log("=" * 60)
+        return result
+
     def run(self) -> RegistrationResult:
         """
-        执行完整的注册流程
+        执行第一阶段注册流程。
 
-        支持已注册账号自动登录：
-        - 如果检测到邮箱已注册，自动切换到登录流程
-        - 已注册账号跳过：设置密码、发送验证码、创建用户账户
-        - 共用步骤：获取验证码、验证验证码、Workspace 和 OAuth 回调
+        注册任务只负责创建账号并保存邮箱/密码；OAuth/token 获取是第二阶段，
+        需要在账号管理页对已加入 Team 的账号统一执行。
 
         Returns:
             RegistrationResult: 注册结果
@@ -1883,7 +1903,12 @@ class RefreshTokenRegistrationEngine:
                 return result
 
             if self._is_existing_account:
-                self._log("检测到该邮箱已注册，切换到登录流程获取 Token")
+                result.error_message = (
+                    "检测到该邮箱已注册。注册任务不再执行登录或 OAuth 取 token；"
+                    "如需处理已有账号，请在账号管理页导入/选择账号后执行“手动取Token”。"
+                )
+                self._log(result.error_message, "error")
+                return result
             else:
                 self._log("5. 设置密码...")
                 password_ok, _ = self._register_password()
@@ -1920,40 +1945,7 @@ class RefreshTokenRegistrationEngine:
                         self._check_email_domain_and_suggest()
                     return result
 
-                login_ready, login_error = self._restart_login_flow()
-                if not login_ready:
-                    result.error_message = login_error
-                    if self.email:
-                        self._check_email_domain_and_suggest()
-                    return result
-
-            if not self._complete_token_exchange(result):
-                # 检查邮箱域名并给出建议
-                if self.email:
-                    self._check_email_domain_and_suggest()
-                return result
-
-            # 10. 完成
-            self._log("=" * 60)
-            if self._is_existing_account:
-                self._log("登录成功")
-            else:
-                self._log("注册成功")
-            self._log(f"邮箱: {result.email}")
-            self._log(f"Account ID: {result.account_id}")
-            self._log(f"Workspace ID: {result.workspace_id}")
-            self._log("=" * 60)
-
-            result.success = True
-            result.metadata = {
-                "email_service": self.email_service.service_type.value,
-                "proxy_used": self.proxy_url,
-                "registered_at": datetime.now().isoformat(),
-                "is_existing_account": self._is_existing_account,
-                "token_acquired_via_relogin": self._token_acquisition_requires_login,
-            }
-
-            return result
+                return self._finish_signup_only_result(result)
 
         except TaskInterruption:
             raise

@@ -130,12 +130,12 @@ class RegisterTaskControlFlowTests(unittest.TestCase):
         self.assertEqual(snapshot["skipped"], 0)
         self.assertEqual(snapshot["errors"], ["获取验证码失败"])
 
-    def test_signup_only_manual_handoff_skips_auto_upload(self):
+    def test_signup_only_chatgpt_account_skips_auto_upload(self):
         account = Account(
             platform="chatgpt",
             email="manual@example.com",
             password="pw",
-            extra={"manual_handoff_stage": "signup_only"},
+            extra={"registration_stage": "signup_only"},
         )
 
         with (
@@ -147,6 +147,7 @@ class RegisterTaskControlFlowTests(unittest.TestCase):
         sync_account.assert_not_called()
         log.assert_called_once()
         self.assertIn("signup-only", log.call_args.args[1])
+        self.assertIn("账号管理页", log.call_args.args[1])
 
 
 if __name__ == "__main__":

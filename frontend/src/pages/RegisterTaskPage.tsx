@@ -94,7 +94,7 @@ export default function RegisterTaskPage() {
         chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_handoff_timeout_seconds: cfg.chatgpt_manual_handoff_timeout_seconds || '900',
         chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds || '10',
-        chatgpt_manual_enable_token_callback: parseBooleanConfigValue(cfg.chatgpt_manual_enable_token_callback),
+        chatgpt_manual_enable_token_callback: false,
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir || '',
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
         chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '',
@@ -172,7 +172,7 @@ export default function RegisterTaskPage() {
       chatgpt_manual_browser_provider: 'camoufox',
       chatgpt_manual_handoff_timeout_seconds: values.chatgpt_manual_handoff_timeout_seconds,
       chatgpt_manual_email_poll_interval_seconds: values.chatgpt_manual_email_poll_interval_seconds,
-      chatgpt_manual_enable_token_callback: values.chatgpt_manual_enable_token_callback,
+      chatgpt_manual_enable_token_callback: false,
       chatgpt_manual_browser_profile_dir: values.chatgpt_manual_browser_profile_dir,
       chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
       chatgpt_camoufox_humanize: values.chatgpt_camoufox_humanize,
@@ -246,15 +246,10 @@ export default function RegisterTaskPage() {
   const mailProvider = Form.useWatch('mail_provider', form)
   const captchaSolver = Form.useWatch('captcha_solver', form)
   const platform = Form.useWatch('platform', form)
-  const manualTokenCallbackEnabled = parseBooleanConfigValue(
-    Form.useWatch('chatgpt_manual_enable_token_callback', form),
-  )
   const executorOptions = getExecutorOptions(platform)
   const isChatGPTManualHandoff =
     platform === 'chatgpt' &&
     chatgptRegistrationMode === CHATGPT_REGISTRATION_MODE_BROWSER_MANUAL_HANDOFF
-  const showChatGPTUploadConfig =
-    platform === 'chatgpt' && (!isChatGPTManualHandoff || manualTokenCallbackEnabled)
 
   useEffect(() => {
     if (isChatGPTManualHandoff) {
@@ -334,7 +329,7 @@ export default function RegisterTaskPage() {
               showIcon
               style={{ marginBottom: 16 }}
               message="ChatGPT 执行器说明"
-              description="当前 ChatGPT refresh-token 注册主体仍是协议请求；有头/无头只影响 Sentinel Browser，不会复用你打开管理界面的浏览器环境。后台缺少 DISPLAY/WAYLAND_DISPLAY 时会强制 headless，并会在任务日志中写出实际模式。"
+              description="当前 ChatGPT 协议注册主体仍是协议请求；有头/无头只影响 Sentinel Browser，不会复用你打开管理界面的浏览器环境。后台缺少 DISPLAY/WAYLAND_DISPLAY 时会强制 headless，并会在任务日志中写出实际模式。"
             />
           )}
           <Form.Item name="captcha_solver" label="验证码" rules={[{ required: true }]}>
@@ -377,11 +372,7 @@ export default function RegisterTaskPage() {
                 showIcon
                 style={{ marginBottom: 16 }}
                 message="浏览器人工接管模式"
-                description={
-                  manualTokenCallbackEnabled
-                    ? '系统先打开 Camoufox ChatGPT 直接注册页；检测到你进入 ChatGPT 后，才会打开第二段 OAuth 授权页取 token。若进入 add-phone，会直接失败，不会自动处理手机号。'
-                    : '系统只打开 Camoufox ChatGPT 直接注册页；验证码、Cloudflare、手机号页都需要你本人处理。若进入 add-phone，会直接失败，不会自动处理手机号。当前只保存邮箱和密码，不自动取 token。'
-                }
+                description="系统只打开 Camoufox ChatGPT 直接注册页；验证码、Cloudflare、手机号页都需要你本人处理。注册任务只保存邮箱和密码，不会打开 OAuth 授权页，也不会取 token。"
               />
             )}
         </Card>
@@ -437,23 +428,13 @@ export default function RegisterTaskPage() {
                   <Input placeholder="true / 1.5" />
                 </Form.Item>
               </Space>
-              <Form.Item
-                name="chatgpt_manual_enable_token_callback"
-                label="第二段 OAuth/token 动作"
-                valuePropName="checked"
-                extra="默认关闭。开启后会在检测到普通注册完成后，继续打开 OAuth 授权页并等待 callback 取 token，随后才可自动上传到 token 平台。"
-              >
-                <Checkbox>注册完成后继续进入 OAuth callback 取 token</Checkbox>
-              </Form.Item>
-              {!manualTokenCallbackEnabled && (
-                <Alert
-                  type="success"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  message="第二段动作已关闭"
-                  description="当前任务只做普通注册并保存邮箱/密码，不会取 token，也不会自动上传到 CPA、Sub2API、CodexProxy 或 Team Manager。"
-                />
-              )}
+              <Alert
+                type="success"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="注册任务仅执行第一阶段"
+                description="当前任务只做普通注册并保存邮箱/密码；取 Token、上传 CPA/Sub2API/CodexProxy/Team Manager 请在账号管理页统一执行。"
+              />
               <Form.Item
                 name="chatgpt_camoufox_geoip"
                 label="GeoIP 跟随代理"
@@ -668,77 +649,14 @@ export default function RegisterTaskPage() {
           )}
         </Card>
 
-        {platform === 'chatgpt' && !isChatGPTManualHandoff && (
-          <Card title="ChatGPT 手机验证" style={{ marginBottom: 16 }}>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              仅在 OAuth 流程进入 `add_phone` 时使用，用于自动取号并轮询短信验证码。
-            </Text>
-            <Form.Item name="smstome_cookie" label="SMSToMe Cookie">
-              <Input.Password placeholder="cf_clearance=...; PHPSESSID=..." />
-            </Form.Item>
-            <Form.Item name="smstome_country_slugs" label="国家列表">
-              <Input placeholder="united-kingdom,poland,finland" />
-            </Form.Item>
-            <Form.Item name="smstome_phone_attempts" label="手机号尝试次数">
-              <Input placeholder="3" />
-            </Form.Item>
-            <Form.Item name="smstome_otp_timeout_seconds" label="短信等待秒数">
-              <Input placeholder="45" />
-            </Form.Item>
-            <Form.Item name="smstome_poll_interval_seconds" label="轮询间隔秒数">
-              <Input placeholder="5" />
-            </Form.Item>
-            <Form.Item name="smstome_sync_max_pages_per_country" label="每国同步页数">
-              <Input placeholder="5" />
-            </Form.Item>
-          </Card>
-        )}
-
-        {showChatGPTUploadConfig && (
-          <Card title="自动上传配置" style={{ marginBottom: 16 }}>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              注册成功后自动上传到外部管理平台（留空则不上传）
-            </Text>
-
-            <Form.Item name="cpa_api_url" label="CPA API URL">
-              <Input placeholder="https://your-cpa.example.com" />
-            </Form.Item>
-            <Form.Item name="cpa_api_key" label="CPA API Key">
-              <Input.Password placeholder="Bearer token" />
-            </Form.Item>
-
-            <Form.Item name="sub2api_api_url" label="Sub2API API URL">
-              <Input placeholder="https://your-sub2api.example.com" />
-            </Form.Item>
-            <Form.Item name="sub2api_api_key" label="Sub2API API Key">
-              <Input.Password placeholder="API Key" />
-            </Form.Item>
-            <Form.Item name="sub2api_group_ids" label="Sub2API 分组 ID">
-              <Input placeholder="多个分组用逗号分隔，例如 2,4,8" />
-            </Form.Item>
-
-            <Form.Item name="codex_proxy_url" label="CodexProxy API URL">
-              <Input placeholder="https://your-codex-proxy.example.com" />
-            </Form.Item>
-            <Form.Item name="codex_proxy_key" label="CodexProxy Admin Key">
-              <Input.Password placeholder="Admin Key" />
-            </Form.Item>
-            <Form.Item name="codex_proxy_upload_type" label="CodexProxy 上传类型">
-              <Select
-                options={[
-                  { value: 'at', label: 'AT (Access Token, 推荐)' },
-                  { value: 'rt', label: 'RT (Refresh Token)' },
-                ]}
-              />
-            </Form.Item>
-
-            <Form.Item name="team_manager_url" label="Team Manager API URL">
-              <Input placeholder="https://your-tm.example.com" />
-            </Form.Item>
-            <Form.Item name="team_manager_key" label="Team Manager API Key">
-              <Input.Password placeholder="API Key" />
-            </Form.Item>
-          </Card>
+        {platform === 'chatgpt' && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Token 获取已移到账号管理页"
+            description="ChatGPT 注册任务不会执行 OAuth callback、手机号验证或自动上传。账号注册完成并加入 Team 后，请到账号管理页选择账号，再执行“手动取Token”。"
+          />
         )}
 
         {captchaSolver === 'yescaptcha' && (

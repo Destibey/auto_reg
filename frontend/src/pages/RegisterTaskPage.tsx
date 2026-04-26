@@ -99,9 +99,12 @@ export default function RegisterTaskPage() {
         chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds || '10',
         chatgpt_manual_enable_token_callback: false,
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir || '',
+        chatgpt_locale: cfg.chatgpt_locale || cfg.chatgpt_camoufox_locale || 'en-US,en',
+        chatgpt_signup_entry_url:
+          cfg.chatgpt_signup_entry_url || cfg.chatgpt_manual_signup_url || 'https://chatgpt.com/',
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
         chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '',
-        chatgpt_camoufox_locale: cfg.chatgpt_camoufox_locale || 'en-US,en',
+        chatgpt_camoufox_locale: cfg.chatgpt_locale || cfg.chatgpt_camoufox_locale || 'en-US,en',
         chatgpt_camoufox_os: cfg.chatgpt_camoufox_os || '',
         chatgpt_manual_browser_keep_open: parseBooleanConfigValue(cfg.chatgpt_manual_browser_keep_open),
         luckmail_base_url: cfg.luckmail_base_url || 'https://mails.luckyous.com/',
@@ -178,9 +181,12 @@ export default function RegisterTaskPage() {
       chatgpt_manual_email_poll_interval_seconds: values.chatgpt_manual_email_poll_interval_seconds,
       chatgpt_manual_enable_token_callback: false,
       chatgpt_manual_browser_profile_dir: values.chatgpt_manual_browser_profile_dir,
+      chatgpt_locale: values.chatgpt_locale,
+      chatgpt_signup_entry_url: values.chatgpt_signup_entry_url,
+      chatgpt_manual_signup_url: values.chatgpt_signup_entry_url,
       chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
       chatgpt_camoufox_humanize: values.chatgpt_camoufox_humanize,
-      chatgpt_camoufox_locale: values.chatgpt_camoufox_locale,
+      chatgpt_camoufox_locale: values.chatgpt_locale,
       chatgpt_camoufox_os: values.chatgpt_camoufox_os,
       chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       luckmail_base_url: values.luckmail_base_url,
@@ -290,6 +296,8 @@ export default function RegisterTaskPage() {
         chatgpt_manual_handoff_timeout_seconds: '900',
         chatgpt_manual_email_poll_interval_seconds: '10',
         chatgpt_manual_enable_token_callback: false,
+        chatgpt_locale: 'en-US,en',
+        chatgpt_signup_entry_url: 'https://chatgpt.com/',
         chatgpt_camoufox_geoip: false,
         chatgpt_camoufox_humanize: '',
         chatgpt_camoufox_locale: 'en-US,en',
@@ -397,6 +405,28 @@ export default function RegisterTaskPage() {
             )}
         </Card>
 
+        {platform === 'chatgpt' && (
+          <Card title="ChatGPT 通用注册设置" style={{ marginBottom: 16 }}>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+              这里的设置会随所有 ChatGPT 注册模式提交。浏览器模式用它决定打开入口和页面语言；协议模式会把语言转换为请求头 Accept-Language。
+            </Text>
+            <Form.Item
+              name="chatgpt_signup_entry_url"
+              label="账号注册入口"
+              extra="默认打开普通 ChatGPT 首页；只有确认需要测试其他入口时再修改。"
+            >
+              <Input placeholder="https://chatgpt.com/" />
+            </Form.Item>
+            <Form.Item
+              name="chatgpt_locale"
+              label="页面语言 / Accept-Language"
+              extra="默认 en-US,en：GeoIP 可继续跟随代理位置，但页面和协议请求语言保持英文；浏览器模式填 auto 可恢复按 GeoIP 自动语言。"
+            >
+              <Input placeholder="en-US,en" />
+            </Form.Item>
+          </Card>
+        )}
+
         {platform === 'chatgpt' &&
           isChatGPTBrowserMode && (
             <Card title="ChatGPT Camoufox 浏览器模式" style={{ marginBottom: 16 }}>
@@ -448,13 +478,6 @@ export default function RegisterTaskPage() {
                   <Input placeholder="true / 1.5" />
                 </Form.Item>
               </Space>
-              <Form.Item
-                name="chatgpt_camoufox_locale"
-                label="页面语言 Locale"
-                extra="默认 en-US,en：GeoIP 仍跟随代理位置，但 OpenAI 页面语言保持英文；填 auto 可恢复按 GeoIP 自动语言。"
-              >
-                <Input placeholder="en-US,en" />
-              </Form.Item>
               <Alert
                 type="success"
                 showIcon

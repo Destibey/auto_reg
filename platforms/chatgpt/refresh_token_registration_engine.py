@@ -21,6 +21,7 @@ from .oauth import OAuthManager, OAuthStart
 from .http_client import OpenAIHTTPClient
 from .sentinel_browser import get_sentinel_token_via_browser
 from .sentinel_token import build_sentinel_token
+from .settings import resolve_chatgpt_accept_language, resolve_chatgpt_locale
 from .utils import (
     generate_datadog_trace,
     generate_device_id,
@@ -121,9 +122,14 @@ class RefreshTokenRegistrationEngine:
         self.task_uuid = task_uuid
         self.browser_mode = str(browser_mode or "headless").strip().lower()
         self.extra_config = dict(extra_config or {})
+        self.chatgpt_locale = resolve_chatgpt_locale(self.extra_config)
+        self.accept_language = resolve_chatgpt_accept_language(self.extra_config)
 
         # 创建 HTTP 客户端
-        self.http_client = OpenAIHTTPClient(proxy_url=proxy_url)
+        self.http_client = OpenAIHTTPClient(
+            proxy_url=proxy_url,
+            accept_language=self.accept_language,
+        )
 
         # 创建 OAuth 管理器
         from .constants import OAUTH_CLIENT_ID, OAUTH_AUTH_URL, OAUTH_TOKEN_URL, OAUTH_REDIRECT_URI, OAUTH_SCOPE
@@ -315,6 +321,7 @@ class RefreshTokenRegistrationEngine:
         """初始化会话"""
         try:
             self.session = self.http_client.session
+            self.session.headers.update({"Accept-Language": self.accept_language})
             if self._device_id:
                 seed_oai_device_cookie(self.session, self._device_id)
             return True
@@ -335,6 +342,7 @@ class RefreshTokenRegistrationEngine:
             try:
                 if not self.session:
                     self.session = self.http_client.session
+                self.session.headers.update({"Accept-Language": self.accept_language})
 
                 seed_oai_device_cookie(self.session, self._device_id)
 
@@ -361,6 +369,7 @@ class RefreshTokenRegistrationEngine:
                 time.sleep(attempt)
                 self.http_client.close()
                 self.session = self.http_client.session
+                self.session.headers.update({"Accept-Language": self.accept_language})
 
         return None
 
@@ -388,7 +397,7 @@ class RefreshTokenRegistrationEngine:
     ) -> Dict[str, str]:
         headers = {
             "accept": accept,
-            "accept-language": "en-US,en;q=0.9",
+            "accept-language": self.accept_language,
             "content-type": content_type,
             "origin": "https://auth.openai.com",
             "referer": referer,
@@ -406,7 +415,7 @@ class RefreshTokenRegistrationEngine:
     def _build_navigation_headers(self, *, referer: str) -> Dict[str, str]:
         return {
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "accept-language": "en-US,en;q=0.9",
+            "accept-language": self.accept_language,
             "referer": referer,
             "user-agent": self._default_user_agent(),
             "sec-fetch-dest": "document",
@@ -421,6 +430,7 @@ class RefreshTokenRegistrationEngine:
         try:
             if not self.session:
                 self.session = self.http_client.session
+                self.session.headers.update({"Accept-Language": self.accept_language})
             if flow in {"username_password_create", "oauth_create_account"}:
                 import os
                 has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))

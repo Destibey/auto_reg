@@ -686,9 +686,14 @@ export default function Accounts() {
         chatgpt_manual_email_poll_interval_seconds: cfg.chatgpt_manual_email_poll_interval_seconds,
         chatgpt_manual_enable_token_callback: false,
         chatgpt_manual_browser_profile_dir: cfg.chatgpt_manual_browser_profile_dir,
+        chatgpt_locale: cfg.chatgpt_locale || cfg.chatgpt_camoufox_locale || 'en-US,en',
+        chatgpt_signup_entry_url:
+          cfg.chatgpt_signup_entry_url || cfg.chatgpt_manual_signup_url || 'https://chatgpt.com/',
+        chatgpt_manual_signup_url:
+          cfg.chatgpt_signup_entry_url || cfg.chatgpt_manual_signup_url || 'https://chatgpt.com/',
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
         chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize,
-        chatgpt_camoufox_locale: cfg.chatgpt_camoufox_locale || 'en-US,en',
+        chatgpt_camoufox_locale: cfg.chatgpt_locale || cfg.chatgpt_camoufox_locale || 'en-US,en',
         chatgpt_camoufox_os: cfg.chatgpt_camoufox_os,
         chatgpt_manual_browser_keep_open: parseBooleanConfigValue(cfg.chatgpt_manual_browser_keep_open),
         luckmail_base_url: cfg.luckmail_base_url,

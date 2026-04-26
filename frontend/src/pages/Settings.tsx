@@ -293,15 +293,16 @@ const TAB_ITEMS = [
         ],
       },
       {
-        title: 'Camoufox 浏览器注册',
-        desc: 'ChatGPT 浏览器人工接管和 Camoufox 自动辅助模式使用；默认每次启动全新 Camoufox 临时 profile 打开普通 ChatGPT 页面。注册任务只保存邮箱/密码，取 Token 请到账号管理页执行。',
+        title: 'ChatGPT 注册通用 / Camoufox 浏览器',
+        desc: '语言和账号注册入口会作用于所有 ChatGPT 注册模式；Camoufox 相关项只影响浏览器人工接管和自动辅助模式。注册任务只保存邮箱/密码，取 Token 请到账号管理页执行。',
         fields: [
+          { key: 'chatgpt_signup_entry_url', label: '账号注册入口', placeholder: 'https://chatgpt.com/' },
+          { key: 'chatgpt_locale', label: '页面语言 / Accept-Language', placeholder: 'en-US,en；浏览器模式填 auto 则跟随 GeoIP' },
           { key: 'chatgpt_manual_handoff_timeout_seconds', label: '人工接管等待秒数', placeholder: '900' },
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
           { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '推荐留空；填写后会复用该 profile' },
           { key: 'chatgpt_camoufox_os', label: 'OS 指纹范围', type: 'select' },
           { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '留空关闭；可填 true 或 1.5' },
-          { key: 'chatgpt_camoufox_locale', label: '页面语言 Locale', placeholder: 'en-US,en；填 auto 则跟随 GeoIP' },
           { key: 'chatgpt_camoufox_geoip', label: 'GeoIP 跟随代理', type: 'boolean' },
           { key: 'chatgpt_manual_browser_keep_open', label: '任务结束保留浏览器', type: 'boolean' },
         ],
@@ -1187,9 +1188,13 @@ export default function Settings() {
       if (!data.chatgpt_manual_email_poll_interval_seconds) {
         data.chatgpt_manual_email_poll_interval_seconds = '10'
       }
-      if (!data.chatgpt_camoufox_locale) {
-        data.chatgpt_camoufox_locale = 'en-US,en'
+      if (!data.chatgpt_locale) {
+        data.chatgpt_locale = data.chatgpt_camoufox_locale || 'en-US,en'
       }
+      if (!data.chatgpt_signup_entry_url) {
+        data.chatgpt_signup_entry_url = data.chatgpt_manual_signup_url || 'https://chatgpt.com/'
+      }
+      data.chatgpt_camoufox_locale = data.chatgpt_locale
       data.chatgpt_manual_enable_token_callback = false
       data.cfworker_domains = parseStoredDomainList(data.cfworker_domains)
       data.cfworker_enabled_domains = parseStoredDomainList(data.cfworker_enabled_domains)
@@ -1221,6 +1226,8 @@ export default function Settings() {
       values.cfworker_random_subdomain = parseBooleanConfigValue(values.cfworker_random_subdomain)
       values.chatgpt_manual_browser_provider = 'camoufox'
       values.chatgpt_manual_enable_token_callback = false
+      values.chatgpt_camoufox_locale = values.chatgpt_locale
+      values.chatgpt_manual_signup_url = values.chatgpt_signup_entry_url
       values.chatgpt_camoufox_geoip = parseBooleanConfigValue(values.chatgpt_camoufox_geoip)
       values.chatgpt_manual_browser_keep_open = parseBooleanConfigValue(values.chatgpt_manual_browser_keep_open)
 
@@ -1232,6 +1239,8 @@ export default function Settings() {
         cfworker_random_subdomain: values.cfworker_random_subdomain,
         chatgpt_manual_browser_provider: 'camoufox',
         chatgpt_manual_enable_token_callback: false,
+        chatgpt_camoufox_locale: values.chatgpt_locale,
+        chatgpt_manual_signup_url: values.chatgpt_signup_entry_url,
         chatgpt_camoufox_geoip: values.chatgpt_camoufox_geoip,
         chatgpt_manual_browser_keep_open: values.chatgpt_manual_browser_keep_open,
       })

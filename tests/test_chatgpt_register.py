@@ -102,6 +102,24 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         self.assertEqual(code, "123456")
         self.assertEqual(email_service.calls[0]["timeout"], 45)
 
+    def test_refresh_token_headers_use_common_chatgpt_locale(self):
+        engine = RefreshTokenRegistrationEngine(
+            email_service=DummyEmailService(),
+            proxy_url="http://127.0.0.1:7890",
+            callback_logger=lambda msg: None,
+            extra_config={"chatgpt_locale": "en-GB,en"},
+        )
+        engine.session = mock.Mock()
+        engine.session.headers = {"User-Agent": "UnitTestAgent/1.0"}
+
+        json_headers = engine._build_json_headers(referer="https://auth.openai.com/create-account")
+        navigation_headers = engine._build_navigation_headers(
+            referer="https://auth.openai.com/create-account"
+        )
+
+        self.assertEqual(json_headers["accept-language"], "en-GB,en;q=0.9")
+        self.assertEqual(navigation_headers["accept-language"], "en-GB,en;q=0.9")
+
     def test_create_email_rejects_blank_email_from_provider(self):
         engine = RefreshTokenRegistrationEngine(
             email_service=EmptyEmailService(),
@@ -328,6 +346,17 @@ class RegistrationEngineFlowTests(unittest.TestCase):
         payload = client.session.post.call_args.kwargs["json"]
         self.assertEqual(payload, {"name": "Jane Miller", "age": 28})
         self.assertNotIn("birthdate", payload)
+
+    def test_chatgpt_client_uses_common_chatgpt_locale(self):
+        client = ChatGPTClient(verbose=False, extra_config={"chatgpt_locale": "en-GB,en"})
+
+        self.assertEqual(client.accept_language, "en-GB,en;q=0.9")
+        self.assertEqual(client.session.headers["Accept-Language"], "en-GB,en;q=0.9")
+
+        client._reset_session()
+
+        self.assertEqual(client.accept_language, "en-GB,en;q=0.9")
+        self.assertEqual(client.session.headers["Accept-Language"], "en-GB,en;q=0.9")
 
     def test_resolve_oauth_callback_url_handles_organization_select_redirect(self):
         engine = self._make_engine()

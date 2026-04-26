@@ -1,6 +1,10 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from core.config_store import config_store
+from platforms.chatgpt.settings import (
+    DEFAULT_CHATGPT_LOCALE,
+    DEFAULT_CHATGPT_SIGNUP_ENTRY_URL,
+)
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -66,6 +70,9 @@ CONFIG_KEYS = [
     "chatgpt_manual_enable_token_callback",
     "chatgpt_manual_browser_profile_dir",
     "chatgpt_manual_browser_keep_open",
+    "chatgpt_locale",
+    "chatgpt_signup_entry_url",
+    "chatgpt_manual_signup_url",
     "chatgpt_camoufox_geoip",
     "chatgpt_camoufox_humanize",
     "chatgpt_camoufox_locale",
@@ -127,8 +134,16 @@ def get_config():
         all_cfg["chatgpt_manual_handoff_timeout_seconds"] = "900"
     if not all_cfg.get("chatgpt_manual_email_poll_interval_seconds"):
         all_cfg["chatgpt_manual_email_poll_interval_seconds"] = "10"
+    if not all_cfg.get("chatgpt_locale"):
+        all_cfg["chatgpt_locale"] = (
+            all_cfg.get("chatgpt_camoufox_locale") or DEFAULT_CHATGPT_LOCALE
+        )
+    if not all_cfg.get("chatgpt_signup_entry_url"):
+        all_cfg["chatgpt_signup_entry_url"] = (
+            all_cfg.get("chatgpt_manual_signup_url") or DEFAULT_CHATGPT_SIGNUP_ENTRY_URL
+        )
     if not all_cfg.get("chatgpt_camoufox_locale"):
-        all_cfg["chatgpt_camoufox_locale"] = "en-US,en"
+        all_cfg["chatgpt_camoufox_locale"] = all_cfg["chatgpt_locale"]
     if not all_cfg.get("chatgpt_manual_enable_token_callback"):
         all_cfg["chatgpt_manual_enable_token_callback"] = False
     # 只返回已知 key，未设置的返回空字符串

@@ -28,6 +28,8 @@ def test_config_exposes_camoufox_manual_handoff_defaults(monkeypatch):
     assert "chatgpt_manual_browser_keep_open" in data
     assert "chatgpt_camoufox_geoip" in data
     assert "chatgpt_camoufox_humanize" in data
+    assert data["chatgpt_locale"] == "en-US,en"
+    assert data["chatgpt_signup_entry_url"] == "https://chatgpt.com/"
     assert data["chatgpt_camoufox_locale"] == "en-US,en"
     assert "chatgpt_camoufox_os" in data
 
@@ -47,6 +49,8 @@ def test_config_update_allows_camoufox_manual_handoff_keys(monkeypatch):
                 "chatgpt_manual_browser_keep_open": True,
                 "chatgpt_camoufox_geoip": True,
                 "chatgpt_camoufox_humanize": "1.5",
+                "chatgpt_locale": "en-GB,en",
+                "chatgpt_signup_entry_url": "https://chatgpt.com/auth/login",
                 "chatgpt_camoufox_locale": "en-GB,en",
                 "chatgpt_camoufox_os": "macos",
                 "unknown_key": "ignored",
@@ -64,6 +68,23 @@ def test_config_update_allows_camoufox_manual_handoff_keys(monkeypatch):
         "chatgpt_manual_browser_keep_open": True,
         "chatgpt_camoufox_geoip": True,
         "chatgpt_camoufox_humanize": "1.5",
+        "chatgpt_locale": "en-GB,en",
+        "chatgpt_signup_entry_url": "https://chatgpt.com/auth/login",
         "chatgpt_camoufox_locale": "en-GB,en",
         "chatgpt_camoufox_os": "macos",
     }
+
+
+def test_config_backfills_common_chatgpt_keys_from_legacy_values(monkeypatch):
+    store = FakeConfigStore()
+    store.values = {
+        "chatgpt_camoufox_locale": "en-GB,en",
+        "chatgpt_manual_signup_url": "https://chatgpt.com/auth/login",
+    }
+    monkeypatch.setattr(config_api, "config_store", store)
+
+    data = config_api.get_config()
+
+    assert data["chatgpt_locale"] == "en-GB,en"
+    assert data["chatgpt_camoufox_locale"] == "en-GB,en"
+    assert data["chatgpt_signup_entry_url"] == "https://chatgpt.com/auth/login"

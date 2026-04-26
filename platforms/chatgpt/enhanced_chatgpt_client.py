@@ -56,6 +56,7 @@ class EnhancedChatGPTClient:
         enable_human_behavior=True,
         enable_fingerprint=True,
         enable_storage_sim=True,
+        extra_config=None,
     ):
         """
         初始化增强版客户端
@@ -73,12 +74,14 @@ class EnhancedChatGPTClient:
             proxy=proxy,
             verbose=verbose,
             browser_mode=browser_mode,
+            extra_config=extra_config,
         )
         
         # 配置
         self.proxy = proxy
         self.verbose = verbose
         self.browser_mode = browser_mode
+        self.extra_config = dict(extra_config or {})
         self.enable_human_behavior = enable_human_behavior
         self.enable_fingerprint = enable_fingerprint
         self.enable_storage_sim = enable_storage_sim

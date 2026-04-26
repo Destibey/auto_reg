@@ -20,6 +20,7 @@ except ImportError:
 
 from .sentinel_token import build_sentinel_token
 from .sentinel_browser import get_sentinel_token_via_browser
+from .settings import resolve_chatgpt_accept_language
 from .utils import (
     FlowState,
     build_browser_headers,
@@ -76,7 +77,7 @@ class ChatGPTClient:
     BASE = "https://chatgpt.com"
     AUTH = "https://auth.openai.com"
 
-    def __init__(self, proxy=None, verbose=True, browser_mode="protocol"):
+    def __init__(self, proxy=None, verbose=True, browser_mode="protocol", extra_config=None):
         """
         初始化 ChatGPT 客户端
 
@@ -84,19 +85,14 @@ class ChatGPTClient:
             proxy: 代理地址
             verbose: 是否输出详细日志
             browser_mode: protocol | headless | headed
+            extra_config: ChatGPT 注册通用配置
         """
         self.proxy = proxy
         self.verbose = verbose
         self.browser_mode = browser_mode or "protocol"
+        self.extra_config = dict(extra_config or {})
         self.device_id = str(uuid.uuid4())
-        self.accept_language = random.choice(
-            [
-                "en-US,en;q=0.9",
-                "en-US,en;q=0.9,zh-CN;q=0.8",
-                "en,en-US;q=0.9",
-                "en-US,en;q=0.8",
-            ]
-        )
+        self.accept_language = resolve_chatgpt_accept_language(self.extra_config)
 
         # 随机 Chrome 版本
         (
@@ -214,14 +210,7 @@ class ChatGPTClient:
             self.ua,
             self.sec_ch_ua,
         ) = _random_chrome_version()
-        self.accept_language = random.choice(
-            [
-                "en-US,en;q=0.9",
-                "en-US,en;q=0.9,zh-CN;q=0.8",
-                "en,en-US;q=0.9",
-                "en-US,en;q=0.8",
-            ]
-        )
+        self.accept_language = resolve_chatgpt_accept_language(self.extra_config)
 
         self.session = curl_requests.Session(impersonate=self.impersonate)
         if self.proxy:

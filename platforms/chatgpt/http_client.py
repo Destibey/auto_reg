@@ -2,6 +2,7 @@
 from typing import Optional, Dict, Any, Tuple
 from core.http_client import HTTPClient, HTTPClientError, RequestConfig
 from .constants import ERROR_MESSAGES
+from .settings import DEFAULT_CHATGPT_ACCEPT_LANGUAGE
 import logging
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,8 @@ class OpenAIHTTPClient(HTTPClient):
     def __init__(
         self,
         proxy_url: Optional[str] = None,
-        config: Optional[RequestConfig] = None
+        config: Optional[RequestConfig] = None,
+        accept_language: str = DEFAULT_CHATGPT_ACCEPT_LANGUAGE,
     ):
         """
         初始化 OpenAI HTTP 客户端
@@ -35,7 +37,7 @@ class OpenAIHTTPClient(HTTPClient):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Language": accept_language or DEFAULT_CHATGPT_ACCEPT_LANGUAGE,
             "Accept-Encoding": "gzip, deflate, br",
             "Connection": "keep-alive",
             "Sec-Fetch-Dest": "empty",

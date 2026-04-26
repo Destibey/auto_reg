@@ -22,10 +22,16 @@ from core.task_runtime import TaskInterruption
 from .constants import MAX_REGISTRATION_AGE, MIN_REGISTRATION_AGE, OAUTH_REDIRECT_URI
 from .oauth import OAuthManager, OAuthStart
 from .refresh_token_registration_engine import RegistrationResult
+from .settings import (
+    DEFAULT_CHATGPT_LOCALE,
+    DEFAULT_CHATGPT_SIGNUP_ENTRY_URL,
+    resolve_chatgpt_locale,
+    resolve_chatgpt_signup_entry_url,
+)
 from .utils import generate_random_name, generate_random_password
 
-DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = "https://chatgpt.com/"
-DEFAULT_CHATGPT_CAMOUFOX_LOCALE = "en-US,en"
+DEFAULT_CHATGPT_MANUAL_SIGNUP_URL = DEFAULT_CHATGPT_SIGNUP_ENTRY_URL
+DEFAULT_CHATGPT_CAMOUFOX_LOCALE = DEFAULT_CHATGPT_LOCALE
 
 
 @dataclass
@@ -165,13 +171,7 @@ class BrowserManualHandoffRegistrationEngine:
         return seconds if seconds > 0 else None
 
     def _camoufox_locale_config(self) -> str:
-        value = str(
-            self.extra_config.get("chatgpt_camoufox_locale")
-            or DEFAULT_CHATGPT_CAMOUFOX_LOCALE
-        ).strip()
-        if value.lower() in {"auto", "geoip", "default", "none", "off"}:
-            return ""
-        return value or DEFAULT_CHATGPT_CAMOUFOX_LOCALE
+        return resolve_chatgpt_locale(self.extra_config, allow_auto=True)
 
     @staticmethod
     def _camoufox_geoip_available() -> bool:
@@ -182,10 +182,7 @@ class BrowserManualHandoffRegistrationEngine:
         return True
 
     def _manual_signup_url(self) -> str:
-        return str(
-            self.extra_config.get("chatgpt_manual_signup_url")
-            or DEFAULT_CHATGPT_MANUAL_SIGNUP_URL
-        ).strip()
+        return resolve_chatgpt_signup_entry_url(self.extra_config)
 
     def _manual_token_callback_enabled(self) -> bool:
         return self._bool_config("chatgpt_manual_enable_token_callback", False)

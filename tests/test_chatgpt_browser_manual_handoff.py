@@ -451,23 +451,52 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         engine = BrowserManualHandoffRegistrationEngine(
             email_service=FakeEmailService(),
             callback_logger=lambda _msg: None,
-            extra_config={"chatgpt_camoufox_locale": "en-GB,en"},
+            extra_config={"chatgpt_locale": "en-GB,en"},
         )
 
         launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
 
         self.assertEqual(launch_kwargs["locale"], "en-GB,en")
 
+    def test_camoufox_launch_keeps_legacy_locale_fallback(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_camoufox_locale": "fr-FR,fr"},
+        )
+
+        launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
+
+        self.assertEqual(launch_kwargs["locale"], "fr-FR,fr")
+
     def test_camoufox_launch_can_leave_locale_automatic(self):
         engine = BrowserManualHandoffRegistrationEngine(
             email_service=FakeEmailService(),
             callback_logger=lambda _msg: None,
-            extra_config={"chatgpt_camoufox_locale": "auto"},
+            extra_config={"chatgpt_locale": "auto"},
         )
 
         launch_kwargs = engine._build_camoufox_launch_kwargs("/tmp/autoreg-camoufox")
 
         self.assertNotIn("locale", launch_kwargs)
+
+    def test_manual_signup_url_prefers_common_entry_url(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_signup_entry_url": "https://chatgpt.com/auth/login"},
+        )
+
+        self.assertEqual(engine._manual_signup_url(), "https://chatgpt.com/auth/login")
+
+    def test_manual_signup_url_keeps_legacy_fallback(self):
+        engine = BrowserManualHandoffRegistrationEngine(
+            email_service=FakeEmailService(),
+            callback_logger=lambda _msg: None,
+            extra_config={"chatgpt_manual_signup_url": "https://chatgpt.com/g/g-example"},
+        )
+
+        self.assertEqual(engine._manual_signup_url(), "https://chatgpt.com/g/g-example")
 
     def test_camoufox_geoip_without_extra_logs_and_falls_back(self):
         messages = []

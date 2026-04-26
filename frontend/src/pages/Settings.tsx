@@ -302,7 +302,7 @@ const TAB_ITEMS = [
           { key: 'chatgpt_manual_email_poll_interval_seconds', label: '邮箱验证码提示间隔', placeholder: '10' },
           { key: 'chatgpt_manual_browser_profile_dir', label: 'Camoufox Profile 目录', placeholder: '推荐留空；填写后会复用该 profile' },
           { key: 'chatgpt_camoufox_os', label: 'OS 指纹范围', type: 'select' },
-          { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '留空关闭；可填 true 或 1.5' },
+          { key: 'chatgpt_camoufox_humanize', label: 'Humanize 鼠标轨迹', placeholder: '默认 1.5；留空关闭' },
           { key: 'chatgpt_camoufox_geoip', label: 'GeoIP 跟随代理', type: 'boolean' },
           { key: 'chatgpt_manual_browser_keep_open', label: '任务结束保留浏览器', type: 'boolean' },
         ],
@@ -1193,6 +1193,9 @@ export default function Settings() {
       }
       if (!data.chatgpt_signup_entry_url) {
         data.chatgpt_signup_entry_url = data.chatgpt_manual_signup_url || 'https://chatgpt.com/'
+      }
+      if (!data.chatgpt_camoufox_humanize) {
+        data.chatgpt_camoufox_humanize = '1.5'
       }
       data.chatgpt_camoufox_locale = data.chatgpt_locale
       data.chatgpt_manual_enable_token_callback = false

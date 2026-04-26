@@ -144,6 +144,8 @@ def get_config():
         )
     if not all_cfg.get("chatgpt_camoufox_locale"):
         all_cfg["chatgpt_camoufox_locale"] = all_cfg["chatgpt_locale"]
+    if not all_cfg.get("chatgpt_camoufox_humanize"):
+        all_cfg["chatgpt_camoufox_humanize"] = "1.5"
     if not all_cfg.get("chatgpt_manual_enable_token_callback"):
         all_cfg["chatgpt_manual_enable_token_callback"] = False
     # 只返回已知 key，未设置的返回空字符串

@@ -27,7 +27,7 @@ def test_config_exposes_camoufox_manual_handoff_defaults(monkeypatch):
     assert "chatgpt_manual_browser_profile_dir" in data
     assert "chatgpt_manual_browser_keep_open" in data
     assert "chatgpt_camoufox_geoip" in data
-    assert "chatgpt_camoufox_humanize" in data
+    assert data["chatgpt_camoufox_humanize"] == "1.5"
     assert data["chatgpt_locale"] == "en-US,en"
     assert data["chatgpt_signup_entry_url"] == "https://chatgpt.com/"
     assert data["chatgpt_camoufox_locale"] == "en-US,en"

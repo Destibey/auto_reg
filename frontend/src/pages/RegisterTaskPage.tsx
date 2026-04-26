@@ -103,7 +103,7 @@ export default function RegisterTaskPage() {
         chatgpt_signup_entry_url:
           cfg.chatgpt_signup_entry_url || cfg.chatgpt_manual_signup_url || 'https://chatgpt.com/',
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
-        chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '',
+        chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '1.5',
         chatgpt_camoufox_locale: cfg.chatgpt_locale || cfg.chatgpt_camoufox_locale || 'en-US,en',
         chatgpt_camoufox_os: cfg.chatgpt_camoufox_os || '',
         chatgpt_manual_browser_keep_open: parseBooleanConfigValue(cfg.chatgpt_manual_browser_keep_open),
@@ -299,7 +299,7 @@ export default function RegisterTaskPage() {
         chatgpt_locale: 'en-US,en',
         chatgpt_signup_entry_url: 'https://chatgpt.com/',
         chatgpt_camoufox_geoip: false,
-        chatgpt_camoufox_humanize: '',
+        chatgpt_camoufox_humanize: '1.5',
         chatgpt_camoufox_locale: 'en-US,en',
         chatgpt_camoufox_os: '',
         chatgpt_manual_browser_keep_open: false,
@@ -473,9 +473,9 @@ export default function RegisterTaskPage() {
                   name="chatgpt_camoufox_humanize"
                   label="Humanize 鼠标轨迹"
                   style={{ flex: 1 }}
-                  extra="留空关闭；可填 true 或最大移动秒数，如 1.5。"
+                  extra="默认 1.5 秒；留空关闭，也可填 true 或其他最大移动秒数。"
                 >
-                  <Input placeholder="true / 1.5" />
+                  <Input placeholder="1.5" />
                 </Form.Item>
               </Space>
               <Alert

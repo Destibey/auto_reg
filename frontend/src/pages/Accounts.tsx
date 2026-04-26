@@ -692,7 +692,7 @@ export default function Accounts() {
         chatgpt_manual_signup_url:
           cfg.chatgpt_signup_entry_url || cfg.chatgpt_manual_signup_url || 'https://chatgpt.com/',
         chatgpt_camoufox_geoip: parseBooleanConfigValue(cfg.chatgpt_camoufox_geoip),
-        chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize,
+        chatgpt_camoufox_humanize: cfg.chatgpt_camoufox_humanize || '1.5',
         chatgpt_camoufox_locale: cfg.chatgpt_locale || cfg.chatgpt_camoufox_locale || 'en-US,en',
         chatgpt_camoufox_os: cfg.chatgpt_camoufox_os,
         chatgpt_manual_browser_keep_open: parseBooleanConfigValue(cfg.chatgpt_manual_browser_keep_open),

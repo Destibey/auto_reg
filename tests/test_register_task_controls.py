@@ -4,9 +4,17 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import main
-from api.tasks import RegisterTaskRequest, _auto_upload_integrations, _create_task_record, _run_register, _task_store
+from api.tasks import (
+    RegisterTaskRequest,
+    _auto_upload_integrations,
+    _create_task_record,
+    _run_register,
+    _sleep_with_task_control,
+    _task_store,
+)
 from core.base_mailbox import BaseMailbox, MailboxAccount
 from core.base_platform import Account, BasePlatform
+from core.task_runtime import RegisterTaskControl, StopTaskRequested
 
 
 class _FakeMailbox(BaseMailbox):
@@ -165,6 +173,21 @@ class RegisterTaskControlFlowTests(unittest.TestCase):
         snapshot = _task_store.snapshot(task_id)
         self.assertTrue(snapshot["control"]["stop_requested"])
         self.assertTrue(any("停止任务请求" in line for line in snapshot["logs"]))
+
+    def test_register_delay_sleep_stops_cooperatively(self):
+        control = RegisterTaskControl()
+        attempt_id = control.start_attempt()
+        sleep_calls = []
+
+        def request_stop_during_sleep(_seconds):
+            sleep_calls.append(_seconds)
+            control.request_stop()
+
+        with patch("api.tasks.time.sleep", side_effect=request_stop_during_sleep):
+            with self.assertRaises(StopTaskRequested):
+                _sleep_with_task_control(control, attempt_id, 30)
+
+        self.assertEqual(sleep_calls, [0.5])
 
     def test_skip_current_api_targets_active_attempt(self):
         task_id = "task-control-api-skip"

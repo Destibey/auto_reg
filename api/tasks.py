@@ -170,6 +170,22 @@ def _save_task_log(platform: str, email: str, status: str,
         s.commit()
 
 
+def _sleep_with_task_control(
+    task_control,
+    attempt_id: int | None,
+    seconds: float,
+    *,
+    interval: float = 0.5,
+) -> None:
+    deadline = time.time() + max(0.0, seconds)
+    while True:
+        task_control.checkpoint(attempt_id=attempt_id)
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return
+        time.sleep(min(interval, remaining))
+
+
 def _get_account_extra(account) -> dict:
     if hasattr(account, "get_extra"):
         try:
@@ -265,7 +281,7 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
                         # 固定延迟
                         if req.register_delay_seconds > 0 and wait_seconds > 0:
                             _log(task_id, f"第 {i+1} 个账号启动前延迟 {wait_seconds:g} 秒")
-                            time.sleep(wait_seconds)
+                            _sleep_with_task_control(task_control, attempt_id, wait_seconds)
                         next_start_time = time.time() + req.register_delay_seconds
                         
                         # 随机延迟
@@ -274,7 +290,7 @@ def _run_register(task_id: str, req: RegisterTaskRequest):
                             random_delay = random.uniform(req.random_delay_min, req.random_delay_max)
                             if random_delay > 0:
                                 _log(task_id, f"第 {i+1} 个账号随机延迟 {random_delay:.1f} 秒 ({req.random_delay_min}-{req.random_delay_max}秒)")
-                                time.sleep(random_delay)
+                                _sleep_with_task_control(task_control, attempt_id, random_delay)
                             next_start_time = time.time() + random_delay
                 from core.config_store import config_store
                 merged_extra = config_store.get_all().copy()

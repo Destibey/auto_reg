@@ -74,7 +74,10 @@ class ManualBrowserSession:
                 pass
         try:
             if self.playwright is not None:
-                self.playwright.stop()
+                if self.provider == "camoufox" and hasattr(self.playwright, "__exit__"):
+                    self.playwright.__exit__(None, None, None)
+                else:
+                    self.playwright.stop()
         except Exception:
             pass
         if self.cleanup_profile_on_close and self.profile_dir:

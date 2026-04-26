@@ -5,6 +5,7 @@ from core.task_runtime import SkipCurrentAttemptRequested, StopTaskRequested
 from platforms.chatgpt.browser_manual_handoff_registration_engine import (
     BrowserManualHandoffRegistrationEngine,
     DEFAULT_CHATGPT_MANUAL_SIGNUP_URL,
+    ManualBrowserSession,
     ManualPageState,
 )
 from platforms.chatgpt.oauth import OAuthStart
@@ -110,6 +111,22 @@ class FakeDisconnectedBrowser:
         return False
 
 
+class FakeClosableContext:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class FakeCamoufoxManager:
+    def __init__(self):
+        self.exited = False
+
+    def __exit__(self, exc_type, exc, tb):
+        self.exited = True
+
+
 class FakeTaskControl:
     def __init__(self, exc):
         self.exc = exc
@@ -134,6 +151,21 @@ class BrowserManualHandoffEngineTests(unittest.TestCase):
         )
         engine.password = "pw-demo"
         return engine
+
+    def test_camoufox_session_close_exits_context_manager(self):
+        context = FakeClosableContext()
+        camoufox = FakeCamoufoxManager()
+        session = ManualBrowserSession(
+            provider="camoufox",
+            page=FakePage(),
+            context=context,
+            playwright=camoufox,
+        )
+
+        session.close()
+
+        self.assertTrue(context.closed)
+        self.assertTrue(camoufox.exited)
 
     def test_signup_only_saves_email_and_password_without_token_exchange(self):
         session = FakeBrowserSession()
